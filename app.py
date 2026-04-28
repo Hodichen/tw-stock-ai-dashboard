@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板
+台股 AI 個股分析儀表板（莫蘭迪色系 / 護眼米白底）
 功能：技術面 + 籌碼面 + 基本面 + Gemini AI 解讀 + 個股新聞
 """
 import streamlit as st
@@ -23,12 +23,158 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 簡潔深色主題（不用複雜 HTML，用 Streamlit 內建元件）
+# 莫蘭迪色系 / 護眼米白底
 st.markdown("""
 <style>
-.stApp { background: #0e1117; }
-.metric-up { color: #ff6b6b !important; }
-.metric-down { color: #6bcf7f !important; }
+/* 主背景：溫暖米白 */
+.stApp {
+    background: #F5F1EB !important;
+    color: #4A4540 !important;
+}
+
+/* 內文預設色 */
+.stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown span,
+.stText, [data-testid="stMarkdownContainer"] {
+    color: #4A4540 !important;
+}
+
+/* 標題 */
+h1, h2, h3, h4, h5, h6 {
+    color: #5C5048 !important;
+    font-weight: 600 !important;
+}
+
+/* 副標題（caption）*/
+[data-testid="stCaptionContainer"], .stCaption {
+    color: #8B7E72 !important;
+}
+
+/* Metric 元件（大數字） */
+[data-testid="stMetricLabel"] {
+    color: #8B7E72 !important;
+    font-weight: 500 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #3D3833 !important;
+    font-weight: 700 !important;
+}
+[data-testid="stMetricDelta"] {
+    font-weight: 600 !important;
+}
+
+/* Metric 容器 */
+[data-testid="stMetric"] {
+    background: #FAF6F0;
+    border: 1px solid #E5DDD0;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+/* 輸入框 */
+.stTextInput input {
+    background: #FFFFFF !important;
+    border: 1.5px solid #C9BFB1 !important;
+    color: #3D3833 !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+}
+.stTextInput input:focus {
+    border-color: #8B9D83 !important;
+    box-shadow: 0 0 0 2px rgba(139, 157, 131, 0.2) !important;
+}
+
+/* 主要按鈕（莫蘭迪綠）*/
+.stButton button[kind="primary"] {
+    background: #8B9D83 !important;
+    border: 1px solid #6F8169 !important;
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+}
+.stButton button[kind="primary"]:hover {
+    background: #6F8169 !important;
+    border-color: #5A6856 !important;
+}
+
+/* 次要按鈕（範例股票）*/
+.stButton button {
+    background: #FAF6F0 !important;
+    border: 1px solid #D4CABB !important;
+    color: #5C5048 !important;
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+}
+.stButton button:hover {
+    background: #EDE5D5 !important;
+    border-color: #B8AB99 !important;
+}
+
+/* 分頁標籤 */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background: transparent;
+}
+.stTabs [data-baseweb="tab"] {
+    background: #FAF6F0 !important;
+    color: #5C5048 !important;
+    border-radius: 8px 8px 0 0 !important;
+    padding: 10px 18px !important;
+    border: 1px solid #E5DDD0 !important;
+    font-weight: 500 !important;
+}
+.stTabs [aria-selected="true"] {
+    background: #8B9D83 !important;
+    color: #FFFFFF !important;
+    border-color: #6F8169 !important;
+}
+
+/* 警告 / 成功 / 資訊 / 錯誤訊息（柔和莫蘭迪色） */
+.stAlert {
+    border-radius: 10px !important;
+    border: 1px solid !important;
+}
+[data-baseweb="notification"][kind="info"], div[data-testid="stAlert"]:has(svg[fill*="3b82f6"]) {
+    background: #E8EDE7 !important;
+    color: #5A6856 !important;
+    border-color: #B8C4B0 !important;
+}
+
+/* 分隔線 */
+hr, [data-testid="stDivider"] {
+    border-color: #D4CABB !important;
+    background: #D4CABB !important;
+}
+
+/* 資料表格 */
+.stDataFrame {
+    background: #FAF6F0;
+    border: 1px solid #E5DDD0;
+    border-radius: 8px;
+}
+
+/* Spinner / 進度條 */
+.stSpinner > div {
+    border-top-color: #8B9D83 !important;
+}
+
+/* Plotly 圖表容器 */
+.js-plotly-plot {
+    background: #FAF6F0 !important;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+/* 隱藏頂部紅條（Streamlit 預設） */
+header[data-testid="stHeader"] {
+    background: #F5F1EB !important;
+}
+
+/* 主容器寬度 */
+.block-container {
+    padding-top: 2rem !important;
+    max-width: 1400px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -139,7 +285,6 @@ def analyze(stock_id):
     cl_v, vr_v = safe(df["close"]), safe(df["VRatio"])
     chg = safe(df["Chg%"]) or 0
 
-    # 法人
     i_start = (df["date"].max() - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
     pivot = pd.DataFrame()
     try:
@@ -173,7 +318,6 @@ def analyze(stock_id):
     else:
         ifor = itru = idal = itot = 0
 
-    # 月營收
     yoy = mom = rev = 0
     has_rev = False
     if not is_etf:
@@ -195,7 +339,6 @@ def analyze(stock_id):
         except:
             pass
 
-    # 警示
     alerts = {"red": [], "yellow": [], "green": []}
     if rsi_v:
         if rsi_v > 80: alerts["red"].append("RSI 嚴重超買")
@@ -242,7 +385,6 @@ def analyze(stock_id):
 # ============================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
-    """呼叫 Gemini API 產生個股深度分析"""
     if gemini_client is None:
         return "⚠️ 未設定 Gemini API Key，AI 解讀功能停用"
 
@@ -285,11 +427,10 @@ def get_ai_analysis(stock_name, stock_id, data_summary):
 
 
 # ============================================
-# 個股新聞（Gemini 搜尋）
+# 個股新聞（Gemini Search Grounding）
 # ============================================
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, stock_id):
-    """用 Gemini Search Grounding 抓最新新聞"""
     if gemini_client is None:
         return "⚠️ 未設定 Gemini API Key，無法抓取新聞"
 
@@ -321,11 +462,35 @@ def get_news(stock_name, stock_id):
 
 
 # ============================================
-# 圖表
+# 圖表（莫蘭迪色系）
 # ============================================
+# 莫蘭迪配色
+MORANDI = {
+    "bg": "#FAF6F0",
+    "grid": "#E5DDD0",
+    "axis": "#8B7E72",
+    "text": "#5C5048",
+    "up": "#C76A6A",       # 莫蘭迪紅（漲）
+    "down": "#7B9E89",     # 莫蘭迪綠（跌）
+    "ma5": "#CBA365",      # 莫蘭迪黃
+    "ma20": "#6D98AB",     # 莫蘭迪藍
+    "ma60": "#B0889F",     # 莫蘭迪粉
+    "rsi": "#CBA365",
+    "k": "#6D98AB",
+    "d": "#B0889F",
+    "macd_dif": "#6D98AB",
+    "macd_dea": "#CBA365",
+    "foreign": "#6D98AB",
+    "trust": "#C76A6A",
+    "dealer": "#B0889F",
+    "total": "#7B9E89",
+    "price": "#CBA365",
+}
+
+
 def plot_kline(df, name, sid):
     fig = make_subplots(
-        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
+        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04,
         row_heights=[0.45, 0.13, 0.21, 0.21],
         subplot_titles=("日 K 線", "成交量", "RSI / KD", "MACD")
     )
@@ -333,48 +498,53 @@ def plot_kline(df, name, sid):
     fig.add_trace(go.Candlestick(
         x=df["date"], open=df["open"], high=df["high"],
         low=df["low"], close=df["close"],
-        increasing_line_color="#ff5454", decreasing_line_color="#2ecc71",
-        increasing_fillcolor="#ff5454", decreasing_fillcolor="#2ecc71", name="K"
+        increasing_line_color=MORANDI["up"], decreasing_line_color=MORANDI["down"],
+        increasing_fillcolor=MORANDI["up"], decreasing_fillcolor=MORANDI["down"],
+        name="K"
     ), row=1, col=1)
 
-    for col, color in [("MA5", "#ffd93d"), ("MA20", "#ff8800"), ("MA60", "#ff66cc")]:
+    for col, color in [("MA5", MORANDI["ma5"]), ("MA20", MORANDI["ma20"]), ("MA60", MORANDI["ma60"])]:
         fig.add_trace(go.Scatter(
             x=df["date"], y=df[col], name=col,
-            line=dict(color=color, width=1.2)
+            line=dict(color=color, width=1.4)
         ), row=1, col=1)
 
-    vc = ["#ff5454" if c >= o else "#2ecc71" for c, o in zip(df["close"], df["open"])]
+    vc = [MORANDI["up"] if c >= o else MORANDI["down"] for c, o in zip(df["close"], df["open"])]
     fig.add_trace(go.Bar(x=df["date"], y=df["volume"], marker_color=vc,
-                         name="量", showlegend=False), row=2, col=1)
+                         name="量", showlegend=False, opacity=0.75), row=2, col=1)
 
     fig.add_trace(go.Scatter(x=df["date"], y=df["RSI"], name="RSI",
-                             line=dict(color="#ffd93d", width=1.5)), row=3, col=1)
+                             line=dict(color=MORANDI["rsi"], width=1.6)), row=3, col=1)
     fig.add_trace(go.Scatter(x=df["date"], y=df["K"], name="K",
-                             line=dict(color="#00d4ff", width=1.2)), row=3, col=1)
+                             line=dict(color=MORANDI["k"], width=1.3)), row=3, col=1)
     fig.add_trace(go.Scatter(x=df["date"], y=df["D"], name="D",
-                             line=dict(color="#ff66cc", width=1.2)), row=3, col=1)
-    fig.add_hline(y=80, line_dash="dash", line_color="#ff5454", row=3, col=1, line_width=1)
-    fig.add_hline(y=20, line_dash="dash", line_color="#2ecc71", row=3, col=1, line_width=1)
+                             line=dict(color=MORANDI["d"], width=1.3)), row=3, col=1)
+    fig.add_hline(y=80, line_dash="dash", line_color=MORANDI["up"], row=3, col=1, line_width=1, opacity=0.5)
+    fig.add_hline(y=20, line_dash="dash", line_color=MORANDI["down"], row=3, col=1, line_width=1, opacity=0.5)
 
     if df["MACD_hist"].notna().any():
-        hc = ["#ff5454" if v >= 0 else "#2ecc71" for v in df["MACD_hist"].fillna(0)]
+        hc = [MORANDI["up"] if v >= 0 else MORANDI["down"] for v in df["MACD_hist"].fillna(0)]
         fig.add_trace(go.Bar(x=df["date"], y=df["MACD_hist"], marker_color=hc,
-                             name="MACD柱", showlegend=False), row=4, col=1)
+                             name="MACD柱", showlegend=False, opacity=0.75), row=4, col=1)
         fig.add_trace(go.Scatter(x=df["date"], y=df["MACD"], name="DIF",
-                                 line=dict(color="#00d4ff", width=1.2)), row=4, col=1)
+                                 line=dict(color=MORANDI["macd_dif"], width=1.4)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df["date"], y=df["MACD_sig"], name="DEA",
-                                 line=dict(color="#ffd93d", width=1.2)), row=4, col=1)
+                                 line=dict(color=MORANDI["macd_dea"], width=1.4)), row=4, col=1)
 
     fig.update_layout(
-        template="plotly_dark", height=620,
+        template="plotly_white", height=620,
         xaxis_rangeslider_visible=False, hovermode="x unified",
-        plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
+        plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"],
+        font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"),
         margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    bgcolor="rgba(255,255,255,0.7)")
     )
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])],
-                     gridcolor="#1f3050", showgrid=True)
-    fig.update_yaxes(gridcolor="#1f3050", showgrid=True)
+                     gridcolor=MORANDI["grid"], showgrid=True,
+                     linecolor=MORANDI["axis"], color=MORANDI["text"])
+    fig.update_yaxes(gridcolor=MORANDI["grid"], showgrid=True,
+                     linecolor=MORANDI["axis"], color=MORANDI["text"])
     return fig
 
 
@@ -385,24 +555,28 @@ def plot_inst(pivot, df):
     pr = df[df["date"].isin(pd.to_datetime(rec.index))][["date", "close"]].sort_values("date")
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    for col, color in [("外資", "#3b82f6"), ("投信", "#ef4444"),
-                       ("自營商", "#a855f7"), ("合計", "#22c55e")]:
+    for col, color in [("外資", MORANDI["foreign"]), ("投信", MORANDI["trust"]),
+                       ("自營商", MORANDI["dealer"]), ("合計", MORANDI["total"])]:
         fig.add_trace(go.Bar(x=rec.index, y=rec[col], name=col,
-                             marker_color=color), secondary_y=False)
+                             marker_color=color, opacity=0.85), secondary_y=False)
     fig.add_trace(go.Scatter(
         x=pr["date"], y=pr["close"], name="股價",
-        line=dict(color="#ffd93d", width=2.5),
+        line=dict(color=MORANDI["price"], width=2.5),
         marker=dict(size=8), mode="lines+markers"
     ), secondary_y=True)
     fig.update_layout(
-        template="plotly_dark", barmode="group", height=340,
-        plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
+        template="plotly_white", barmode="group", height=340,
+        plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"],
+        font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"),
         margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    bgcolor="rgba(255,255,255,0.7)")
     )
-    fig.update_yaxes(title_text="法人(張)", secondary_y=False, gridcolor="#1f3050")
-    fig.update_yaxes(title_text="股價(元)", secondary_y=True, gridcolor="#1f3050")
-    fig.update_xaxes(gridcolor="#1f3050")
+    fig.update_yaxes(title_text="法人(張)", secondary_y=False,
+                     gridcolor=MORANDI["grid"], color=MORANDI["text"])
+    fig.update_yaxes(title_text="股價(元)", secondary_y=True,
+                     gridcolor=MORANDI["grid"], color=MORANDI["text"])
+    fig.update_xaxes(gridcolor=MORANDI["grid"], color=MORANDI["text"])
     return fig
 
 
@@ -412,7 +586,6 @@ def plot_inst(pivot, df):
 st.title("📊 台股 AI 個股分析")
 st.caption("🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞")
 
-# 輸入區
 ic1, ic2 = st.columns([4, 1])
 with ic1:
     sid = st.text_input(
@@ -424,7 +597,6 @@ with ic1:
 with ic2:
     go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
 
-# 範例股票快速按鈕
 st.markdown("**🎯 快速分析範例：**")
 ex_col = st.columns(6)
 examples = [("2330", "台積電"), ("0050", "台灣50"), ("2303", "聯電"),
@@ -437,7 +609,6 @@ for i, (code, n) in enumerate(examples):
 
 st.divider()
 
-# 沒輸入就顯示介紹
 if not (go_btn and sid.strip()) and not st.session_state.get("triggered", False):
     if sid.strip():
         st.session_state["triggered"] = True
@@ -471,9 +642,7 @@ if err or r is None:
     st.stop()
 
 
-# ============================================
-# 標題列（用 Streamlit metric 元件，不用 HTML）
-# ============================================
+# 標題列
 st.subheader(f"{r['name']} ({r['id']})  {r['status']}")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -494,9 +663,7 @@ if r["alerts"]["red"] or r["alerts"]["yellow"] or r["alerts"]["green"]:
 
 st.divider()
 
-# ============================================
-# 分頁：5 個 Tab
-# ============================================
+# 5 個分頁
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 技術面",
     "💼 籌碼面",
@@ -569,15 +736,24 @@ with tab4:
     st.markdown("### 🤖 Gemini AI 智能解讀")
     st.caption("由 Google Gemini 2.5 Flash 模型產生的深度分析報告")
 
-    if st.button("🚀 產生 AI 分析報告", type="primary"):
+    if st.button("🚀 產生 AI 分析報告", type="primary", key="ai_btn"):
         with st.spinner("AI 正在思考中，請稍候 10-20 秒..."):
+            ma5_str = f"{r['ma5']:.1f}" if r['ma5'] else "N/A"
+            ma20_str = f"{r['ma20']:.1f}" if r['ma20'] else "N/A"
+            ma60_str = f"{r['ma60']:.1f}" if r['ma60'] else "N/A"
+            rsi_str = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
+            k_str = f"{r['k']:.1f}" if r['k'] else "N/A"
+            d_str = f"{r['d']:.1f}" if r['d'] else "N/A"
+            macd_str = f"{r['macd']:.2f}" if r['macd'] else "N/A"
+            rev_block = f"月營收：{r['rev']:.2f} 億, YoY {r['yoy']:+.1f}%, MoM {r['mom']:+.1f}%" if r['has_rev'] else "ETF 或興櫃，無月營收資料"
+
             data_summary = f"""
 - 收盤價：{r['close']:.2f}（漲跌 {r['chg']:+.2f}%）
 - 成交量：{r['vol']:,} 張
-- 均線：MA5={r['ma5']:.1f if r['ma5'] else 'N/A'}, MA20={r['ma20']:.1f if r['ma20'] else 'N/A'}, MA60={r['ma60']:.1f if r['ma60'] else 'N/A'}
-- 技術指標：RSI={r['rsi']:.1f if r['rsi'] else 'N/A'}, K={r['k']:.1f if r['k'] else 'N/A'}, D={r['d']:.1f if r['d'] else 'N/A'}, MACD={r['macd']:.2f if r['macd'] else 'N/A'}
+- 均線：MA5={ma5_str}, MA20={ma20_str}, MA60={ma60_str}
+- 技術指標：RSI={rsi_str}, K={k_str}, D={d_str}, MACD={macd_str}
 - 法人籌碼：外資 {r['ifor']:+,} 張, 投信 {r['itru']:+,} 張, 自營商 {r['idal']:+,} 張
-- 月營收：{r['rev']:.2f} 億, YoY {r['yoy']:+.1f}%, MoM {r['mom']:+.1f}% {'(ETF 無資料)' if not r['has_rev'] else ''}
+- {rev_block}
 - 警示燈：紅燈 {len(r['alerts']['red'])} 個, 黃燈 {len(r['alerts']['yellow'])} 個, 綠燈 {len(r['alerts']['green'])} 個
 - 整體狀態：{r['status']}
 """
@@ -592,7 +768,7 @@ with tab5:
     st.markdown("### 📰 個股最新新聞")
     st.caption("由 Gemini Google Search 即時搜尋最近 7 天相關新聞")
 
-    if st.button("🔍 搜尋最新新聞", type="primary"):
+    if st.button("🔍 搜尋最新新聞", type="primary", key="news_btn"):
         with st.spinner("正在搜尋新聞，請稍候 10-20 秒..."):
             news = get_news(r["name"], r["id"])
             st.markdown(news)
@@ -601,7 +777,6 @@ with tab5:
     else:
         st.info("👆 點上方按鈕搜尋最新新聞")
 
-# 頁尾
 st.divider()
 st.caption(f"📊 資料來源：FinMind · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.caption("⚠️ 本網站僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。")
