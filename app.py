@@ -2,6 +2,7 @@
 """
 台股 AI 個股分析儀表板（莫蘭迪色系 / 護眼米白底）
 功能：技術面 + 籌碼面 + 基本面 + Gemini AI 解讀 + 個股新聞
+特色：FinMind 4 token 輪替 + Gemini 2 token 輪替（提升 API 額度）
 """
 import streamlit as st
 import pandas as pd
@@ -10,7 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from FinMind.data import DataLoader
 from datetime import datetime
-import requests
+import random
 import json
 
 # ============================================
@@ -23,46 +24,26 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 莫蘭迪色系 / 護眼米白底
+# 莫蘭迪米白護眼配色 + Metric 漲跌色（紅漲綠跌台股慣例）
 st.markdown("""
 <style>
-/* 主背景：溫暖米白 */
-.stApp {
-    background: #F5F1EB !important;
-    color: #4A4540 !important;
-}
-
-/* 內文預設色 */
+.stApp { background: #F5F1EB !important; color: #4A4540 !important; }
 .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown span,
-.stText, [data-testid="stMarkdownContainer"] {
-    color: #4A4540 !important;
-}
+.stText, [data-testid="stMarkdownContainer"] { color: #4A4540 !important; }
+h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important; }
+[data-testid="stCaptionContainer"], .stCaption { color: #8B7E72 !important; }
 
-/* 標題 */
-h1, h2, h3, h4, h5, h6 {
-    color: #5C5048 !important;
-    font-weight: 600 !important;
-}
+[data-testid="stMetricLabel"] { color: #8B7E72 !important; font-weight: 500 !important; }
+[data-testid="stMetricValue"] { color: #3D3833 !important; font-weight: 700 !important; }
+[data-testid="stMetricDelta"] { font-weight: 600 !important; }
 
-/* 副標題（caption）*/
-[data-testid="stCaptionContainer"], .stCaption {
-    color: #8B7E72 !important;
-}
+/* 🔴 台股慣例：上漲紅、下跌綠 */
+[data-testid="stMetricDelta"] svg { fill: currentColor !important; }
+[data-testid="stMetricDelta"][class*="positive"],
+[data-testid="stMetricDelta"]:has(svg[class*="positive"]) { color: #C76A6A !important; }
+[data-testid="stMetricDelta"][class*="negative"],
+[data-testid="stMetricDelta"]:has(svg[class*="negative"]) { color: #7B9E89 !important; }
 
-/* Metric 元件（大數字） */
-[data-testid="stMetricLabel"] {
-    color: #8B7E72 !important;
-    font-weight: 500 !important;
-}
-[data-testid="stMetricValue"] {
-    color: #3D3833 !important;
-    font-weight: 700 !important;
-}
-[data-testid="stMetricDelta"] {
-    font-weight: 600 !important;
-}
-
-/* Metric 容器 */
 [data-testid="stMetric"] {
     background: #FAF6F0;
     border: 1px solid #E5DDD0;
@@ -70,7 +51,6 @@ h1, h2, h3, h4, h5, h6 {
     padding: 12px 14px;
 }
 
-/* 輸入框 */
 .stTextInput input {
     background: #FFFFFF !important;
     border: 1.5px solid #C9BFB1 !important;
@@ -84,7 +64,6 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 0 2px rgba(139, 157, 131, 0.2) !important;
 }
 
-/* 主要按鈕（莫蘭迪綠）*/
 .stButton button[kind="primary"] {
     background: #8B9D83 !important;
     border: 1px solid #6F8169 !important;
@@ -96,8 +75,6 @@ h1, h2, h3, h4, h5, h6 {
     background: #6F8169 !important;
     border-color: #5A6856 !important;
 }
-
-/* 次要按鈕（範例股票）*/
 .stButton button {
     background: #FAF6F0 !important;
     border: 1px solid #D4CABB !important;
@@ -110,11 +87,7 @@ h1, h2, h3, h4, h5, h6 {
     border-color: #B8AB99 !important;
 }
 
-/* 分頁標籤 */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    background: transparent;
-}
+.stTabs [data-baseweb="tab-list"] { gap: 8px; background: transparent; }
 .stTabs [data-baseweb="tab"] {
     background: #FAF6F0 !important;
     color: #5C5048 !important;
@@ -129,88 +102,87 @@ h1, h2, h3, h4, h5, h6 {
     border-color: #6F8169 !important;
 }
 
-/* 警告 / 成功 / 資訊 / 錯誤訊息（柔和莫蘭迪色） */
-.stAlert {
-    border-radius: 10px !important;
-    border: 1px solid !important;
-}
-[data-baseweb="notification"][kind="info"], div[data-testid="stAlert"]:has(svg[fill*="3b82f6"]) {
-    background: #E8EDE7 !important;
-    color: #5A6856 !important;
-    border-color: #B8C4B0 !important;
-}
-
-/* 分隔線 */
-hr, [data-testid="stDivider"] {
-    border-color: #D4CABB !important;
-    background: #D4CABB !important;
-}
-
-/* 資料表格 */
-.stDataFrame {
-    background: #FAF6F0;
-    border: 1px solid #E5DDD0;
-    border-radius: 8px;
-}
-
-/* Spinner / 進度條 */
-.stSpinner > div {
-    border-top-color: #8B9D83 !important;
-}
-
-/* Plotly 圖表容器 */
-.js-plotly-plot {
-    background: #FAF6F0 !important;
-    border-radius: 8px;
-    padding: 6px;
-}
-
-/* 隱藏頂部紅條（Streamlit 預設） */
-header[data-testid="stHeader"] {
-    background: #F5F1EB !important;
-}
-
-/* 主容器寬度 */
-.block-container {
-    padding-top: 2rem !important;
-    max-width: 1400px !important;
-}
+.stAlert { border-radius: 10px !important; border: 1px solid !important; }
+hr, [data-testid="stDivider"] { border-color: #D4CABB !important; background: #D4CABB !important; }
+.stDataFrame { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 8px; }
+.stSpinner > div { border-top-color: #8B9D83 !important; }
+.js-plotly-plot { background: #FAF6F0 !important; border-radius: 8px; padding: 6px; }
+header[data-testid="stHeader"] { background: #F5F1EB !important; }
+.block-container { padding-top: 2rem !important; max-width: 1400px !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================
-# 連線資料源
+# Token 池輪替機制（FinMind 4 token + Gemini 2 token）
 # ============================================
+def get_finmind_tokens():
+    """從 Secrets 讀取所有 FinMind token（支援多把輪替）"""
+    tokens = []
+    # 先讀 FINMIND_TOKEN（必填，主要）
+    try:
+        tokens.append(st.secrets["FINMIND_TOKEN"])
+    except Exception:
+        pass
+    # 再讀 FINMIND_TOKEN_2 ~ 4（選填，備援）
+    for i in range(2, 5):
+        try:
+            tokens.append(st.secrets[f"FINMIND_TOKEN_{i}"])
+        except Exception:
+            pass
+    return tokens
+
+
+def get_gemini_keys():
+    """從 Secrets 讀取所有 Gemini key（支援多把輪替）"""
+    keys = []
+    try:
+        keys.append(st.secrets["GEMINI_API_KEY"])
+    except Exception:
+        pass
+    try:
+        keys.append(st.secrets["GEMINI_API_KEY_2"])
+    except Exception:
+        pass
+    return keys
+
+
 @st.cache_resource
 def get_finmind():
+    """初始化 FinMind 連線（隨機選一把 token）"""
+    tokens = get_finmind_tokens()
+    if not tokens:
+        st.error("❌ 未設定 FINMIND_TOKEN")
+        st.stop()
+    token = random.choice(tokens)
     try:
-        token = st.secrets["FINMIND_TOKEN"]
         dl = DataLoader()
         dl.login_by_token(api_token=token)
-        return dl
+        return dl, len(tokens)
     except Exception as e:
         st.error(f"FinMind 登入失敗：{e}")
         st.stop()
 
 
-@st.cache_resource
 def get_gemini_client():
+    """每次呼叫時隨機選一把 Gemini key（不 cache，每次輪替）"""
+    keys = get_gemini_keys()
+    if not keys:
+        return None, 0
     try:
         from google import genai
-        api_key = st.secrets["GEMINI_API_KEY"]
-        return genai.Client(api_key=api_key)
+        api_key = random.choice(keys)
+        return genai.Client(api_key=api_key), len(keys)
     except Exception as e:
         st.warning(f"⚠️ Gemini API 未啟用：{e}")
-        return None
+        return None, 0
 
 
-dl = get_finmind()
-gemini_client = get_gemini_client()
+dl, finmind_token_count = get_finmind()
 
 
 # ============================================
-# 技術指標（純 pandas）
+# 技術指標
 # ============================================
 def sma(s, n): return s.rolling(n, min_periods=1).mean()
 
@@ -381,11 +353,12 @@ def analyze(stock_id):
 
 
 # ============================================
-# Gemini AI 智能解讀
+# Gemini AI 智能解讀（每次隨機輪替 key）
 # ============================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
-    if gemini_client is None:
+    client, key_count = get_gemini_client()
+    if client is None:
         return "⚠️ 未設定 Gemini API Key，AI 解讀功能停用"
 
     prompt = f"""你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。
@@ -417,7 +390,7 @@ def get_ai_analysis(stock_name, stock_id, data_summary):
 - 加上免責聲明結尾
 """
     try:
-        response = gemini_client.models.generate_content(
+        response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
         )
@@ -426,12 +399,10 @@ def get_ai_analysis(stock_name, stock_id, data_summary):
         return f"❌ AI 分析暫時無法使用：{str(e)[:200]}"
 
 
-# ============================================
-# 個股新聞（Gemini Search Grounding）
-# ============================================
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, stock_id):
-    if gemini_client is None:
+    client, key_count = get_gemini_client()
+    if client is None:
         return "⚠️ 未設定 Gemini API Key，無法抓取新聞"
 
     prompt = f"""請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，
@@ -449,7 +420,7 @@ def get_news(stock_name, stock_id):
 """
     try:
         from google.genai import types
-        response = gemini_client.models.generate_content(
+        response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -462,19 +433,18 @@ def get_news(stock_name, stock_id):
 
 
 # ============================================
-# 圖表（莫蘭迪色系）
+# 圖表（莫蘭迪色系，台股紅漲綠跌）
 # ============================================
-# 莫蘭迪配色
 MORANDI = {
     "bg": "#FAF6F0",
     "grid": "#E5DDD0",
     "axis": "#8B7E72",
     "text": "#5C5048",
-    "up": "#C76A6A",       # 莫蘭迪紅（漲）
-    "down": "#7B9E89",     # 莫蘭迪綠（跌）
-    "ma5": "#CBA365",      # 莫蘭迪黃
-    "ma20": "#6D98AB",     # 莫蘭迪藍
-    "ma60": "#B0889F",     # 莫蘭迪粉
+    "up": "#C76A6A",       # 莫蘭迪紅（漲，台股慣例）
+    "down": "#7B9E89",     # 莫蘭迪綠（跌，台股慣例）
+    "ma5": "#CBA365",
+    "ma20": "#6D98AB",
+    "ma60": "#B0889F",
     "rsi": "#CBA365",
     "k": "#6D98AB",
     "d": "#B0889F",
@@ -584,7 +554,8 @@ def plot_inst(pivot, df):
 # 主畫面
 # ============================================
 st.title("📊 台股 AI 個股分析")
-st.caption("🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞")
+st.caption(f"🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞 · "
+           f"FinMind {finmind_token_count} token 池 / Gemini {len(get_gemini_keys())} key 池")
 
 ic1, ic2 = st.columns([4, 1])
 with ic1:
@@ -597,22 +568,11 @@ with ic1:
 with ic2:
     go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
 
-st.markdown("**🎯 快速分析範例：**")
-ex_col = st.columns(6)
-examples = [("2330", "台積電"), ("0050", "台灣50"), ("2303", "聯電"),
-            ("6849", "奇鼎"), ("4573", "高明鐵"), ("00981A", "主動統一")]
-for i, (code, n) in enumerate(examples):
-    with ex_col[i]:
-        if st.button(f"{code}\n{n}", key=f"ex_{code}", use_container_width=True):
-            st.session_state["stock_input"] = code
-            st.rerun()
-
 st.divider()
 
-if not (go_btn and sid.strip()) and not st.session_state.get("triggered", False):
-    if sid.strip():
-        st.session_state["triggered"] = True
-    else:
+# 沒輸入就顯示介紹
+if not (go_btn and sid.strip()):
+    if not sid.strip():
         st.info("👆 請輸入股票代號，按「開始分析」")
         st.markdown("""
         ### 🎯 本系統提供
@@ -625,6 +585,10 @@ if not (go_btn and sid.strip()) and not st.session_state.get("triggered", False)
 
         ### ✅ 支援
         上市、上櫃、ETF、興櫃股票
+
+        ### 🎨 配色說明（台股慣例）
+        - 🔴 紅色 = 上漲
+        - 🟢 綠色 = 下跌
         """)
         st.stop()
 
@@ -651,7 +615,6 @@ c2.metric("成交量", f"{r['vol']:,} 張")
 c3.metric("RSI(14)", f"{r['rsi']:.2f}" if r['rsi'] else "N/A")
 c4.metric("更新時間", datetime.now().strftime("%m/%d %H:%M"))
 
-# 警示燈
 if r["alerts"]["red"] or r["alerts"]["yellow"] or r["alerts"]["green"]:
     cols = st.columns([1, 1, 1])
     if r["alerts"]["red"]:
@@ -663,7 +626,6 @@ if r["alerts"]["red"] or r["alerts"]["yellow"] or r["alerts"]["green"]:
 
 st.divider()
 
-# 5 個分頁
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 技術面",
     "💼 籌碼面",
