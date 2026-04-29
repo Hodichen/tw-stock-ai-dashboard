@@ -710,7 +710,7 @@ with c3:
     st.markdown(f"""
     <div class="inst-card">
         <div class="inst-label">RSI(14)</div>
-        <div style="color:{rsi_color};font-size:28px;font-weight:700;">{r['rsi']:.2f if r['rsi'] else 'N/A'}</div>
+        <div style="color:{rsi_color};font-size:28px;font-weight:700;">{f"{r['rsi']:.2f}" if r['rsi'] else "N/A"}</div>
         <div style="color:{rsi_color};font-size:13px;margin-top:4px;">{rsi_label}</div>
     </div>
     """, unsafe_allow_html=True)
