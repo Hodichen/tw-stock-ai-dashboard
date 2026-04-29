@@ -2,7 +2,7 @@
 """
 台股 AI 個股分析儀表板（莫蘭迪色系 / 護眼米白底）
 功能：技術面 + 籌碼面 + 基本面 + Gemini AI 解讀 + 個股新聞
-特色：FinMind 4 token 輪替 + Gemini 2 token 輪替（提升 API 額度）
+特色：FinMind 4 token 輪替 + Gemini 2 token 輪替 + AI 自動重試
 """
 import streamlit as st
 import pandas as pd
@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 from FinMind.data import DataLoader
 from datetime import datetime
 import random
+import time
 import json
 
 # ============================================
@@ -24,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 莫蘭迪米白護眼配色 + Metric 漲跌色（紅漲綠跌台股慣例）
+# 莫蘭迪米白護眼配色
 st.markdown("""
 <style>
 .stApp { background: #F5F1EB !important; color: #4A4540 !important; }
@@ -36,13 +37,6 @@ h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important;
 [data-testid="stMetricLabel"] { color: #8B7E72 !important; font-weight: 500 !important; }
 [data-testid="stMetricValue"] { color: #3D3833 !important; font-weight: 700 !important; }
 [data-testid="stMetricDelta"] { font-weight: 600 !important; }
-
-/* 🔴 台股慣例：上漲紅、下跌綠 */
-[data-testid="stMetricDelta"] svg { fill: currentColor !important; }
-[data-testid="stMetricDelta"][class*="positive"],
-[data-testid="stMetricDelta"]:has(svg[class*="positive"]) { color: #C76A6A !important; }
-[data-testid="stMetricDelta"][class*="negative"],
-[data-testid="stMetricDelta"]:has(svg[class*="negative"]) { color: #7B9E89 !important; }
 
 [data-testid="stMetric"] {
     background: #FAF6F0;
@@ -109,22 +103,32 @@ hr, [data-testid="stDivider"] { border-color: #D4CABB !important; background: #D
 .js-plotly-plot { background: #FAF6F0 !important; border-radius: 8px; padding: 6px; }
 header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .block-container { padding-top: 2rem !important; max-width: 1400px !important; }
+
+/* 自訂法人卡片（取代 metric，可控紅綠色） */
+.inst-card {
+    background: #FAF6F0;
+    border: 1px solid #E5DDD0;
+    border-radius: 10px;
+    padding: 14px;
+    text-align: left;
+}
+.inst-label { color: #8B7E72; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+.inst-value-up { color: #C76A6A; font-size: 28px; font-weight: 700; }
+.inst-value-down { color: #7B9E89; font-size: 28px; font-weight: 700; }
+.inst-value-flat { color: #8B7E72; font-size: 28px; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================
-# Token 池輪替機制（FinMind 4 token + Gemini 2 token）
+# Token 池輪替機制
 # ============================================
 def get_finmind_tokens():
-    """從 Secrets 讀取所有 FinMind token（支援多把輪替）"""
     tokens = []
-    # 先讀 FINMIND_TOKEN（必填，主要）
     try:
         tokens.append(st.secrets["FINMIND_TOKEN"])
     except Exception:
         pass
-    # 再讀 FINMIND_TOKEN_2 ~ 4（選填，備援）
     for i in range(2, 5):
         try:
             tokens.append(st.secrets[f"FINMIND_TOKEN_{i}"])
@@ -134,7 +138,6 @@ def get_finmind_tokens():
 
 
 def get_gemini_keys():
-    """從 Secrets 讀取所有 Gemini key（支援多把輪替）"""
     keys = []
     try:
         keys.append(st.secrets["GEMINI_API_KEY"])
@@ -149,7 +152,6 @@ def get_gemini_keys():
 
 @st.cache_resource
 def get_finmind():
-    """初始化 FinMind 連線（隨機選一把 token）"""
     tokens = get_finmind_tokens()
     if not tokens:
         st.error("❌ 未設定 FINMIND_TOKEN")
@@ -164,21 +166,17 @@ def get_finmind():
         st.stop()
 
 
-def get_gemini_client():
-    """每次呼叫時隨機選一把 Gemini key（不 cache，每次輪替）"""
-    keys = get_gemini_keys()
-    if not keys:
-        return None, 0
+def get_gemini_client_for_key(api_key):
+    """為特定 key 建立 client"""
     try:
         from google import genai
-        api_key = random.choice(keys)
-        return genai.Client(api_key=api_key), len(keys)
-    except Exception as e:
-        st.warning(f"⚠️ Gemini API 未啟用：{e}")
-        return None, 0
+        return genai.Client(api_key=api_key)
+    except Exception:
+        return None
 
 
 dl, finmind_token_count = get_finmind()
+gemini_keys = get_gemini_keys()
 
 
 # ============================================
@@ -218,7 +216,7 @@ def safe(s, i=-1):
 
 
 # ============================================
-# 主分析函式
+# 主分析
 # ============================================
 @st.cache_data(ttl=1800, show_spinner=False)
 def analyze(stock_id):
@@ -353,14 +351,67 @@ def analyze(stock_id):
 
 
 # ============================================
-# Gemini AI 智能解讀（每次隨機輪替 key）
+# Gemini API（自動重試 + 模型 fallback + key 輪替）
 # ============================================
+def call_gemini_with_retry(prompt, use_search=False, max_retries=3):
+    """智能呼叫 Gemini API：
+    - 隨機選 key
+    - 503 過載自動換 key 或換模型重試
+    - 最多重試 3 次
+    """
+    if not gemini_keys:
+        return "⚠️ 未設定 Gemini API Key"
+
+    # 嘗試的模型順序：先用 flash，過載就降到 flash-lite
+    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+    last_error = None
+    for attempt in range(max_retries):
+        # 隨機選 key（每次重試都重新選）
+        api_key = random.choice(gemini_keys)
+        client = get_gemini_client_for_key(api_key)
+        if client is None:
+            last_error = "Gemini client 初始化失敗"
+            continue
+
+        # 選模型（前 2 次用 flash，第 3 次用 flash-lite）
+        model = models_to_try[0] if attempt < 2 else models_to_try[1]
+
+        try:
+            from google.genai import types
+            if use_search:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())]
+                    ),
+                )
+            else:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                )
+            return response.text
+        except Exception as e:
+            err_msg = str(e)
+            last_error = err_msg
+            # 503 / 429 / 過載 → 立刻換 key 重試
+            if any(x in err_msg for x in ["503", "429", "UNAVAILABLE", "overloaded", "RESOURCE_EXHAUSTED"]):
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # 等 2 秒再試
+                    continue
+            else:
+                # 其他錯誤直接回傳
+                return f"❌ AI 暫時無法使用：{err_msg[:200]}"
+
+    return (f"❌ AI 服務暫時繁忙（已重試 {max_retries} 次）\n\n"
+            f"建議：請等待 1-2 分鐘後再試，或改用其他股票測試。\n\n"
+            f"錯誤訊息：{str(last_error)[:200]}")
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
-    client, key_count = get_gemini_client()
-    if client is None:
-        return "⚠️ 未設定 Gemini API Key，AI 解讀功能停用"
-
     prompt = f"""你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。
 
 【當前數據】
@@ -389,22 +440,11 @@ def get_ai_analysis(stock_name, stock_id, data_summary):
 - 提供具體可執行的建議
 - 加上免責聲明結尾
 """
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        return f"❌ AI 分析暫時無法使用：{str(e)[:200]}"
+    return call_gemini_with_retry(prompt, use_search=False)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, stock_id):
-    client, key_count = get_gemini_client()
-    if client is None:
-        return "⚠️ 未設定 Gemini API Key，無法抓取新聞"
-
     prompt = f"""請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，
 產出 3-5 則最重要的新聞重點。
 
@@ -418,18 +458,7 @@ def get_news(stock_name, stock_id):
 請使用繁體中文，並按時間排序（最新的在最前面）。
 若沒有相關新聞，請說明。
 """
-    try:
-        from google.genai import types
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            ),
-        )
-        return response.text
-    except Exception as e:
-        return f"❌ 新聞搜尋暫時無法使用：{str(e)[:200]}"
+    return call_gemini_with_retry(prompt, use_search=True)
 
 
 # ============================================
@@ -440,8 +469,8 @@ MORANDI = {
     "grid": "#E5DDD0",
     "axis": "#8B7E72",
     "text": "#5C5048",
-    "up": "#C76A6A",       # 莫蘭迪紅（漲，台股慣例）
-    "down": "#7B9E89",     # 莫蘭迪綠（跌，台股慣例）
+    "up": "#C76A6A",
+    "down": "#7B9E89",
     "ma5": "#CBA365",
     "ma20": "#6D98AB",
     "ma60": "#B0889F",
@@ -551,11 +580,55 @@ def plot_inst(pivot, df):
 
 
 # ============================================
+# 紅綠數值卡片（取代 metric，讓 ± 可控色）
+# ============================================
+def render_inst_card(label, value):
+    """法人卡片：正數紅、負數綠、零灰"""
+    if value > 0:
+        color_class = "inst-value-up"
+        sign = "+"
+    elif value < 0:
+        color_class = "inst-value-down"
+        sign = ""  # 負號自帶
+    else:
+        color_class = "inst-value-flat"
+        sign = ""
+    formatted = f"{sign}{value:,}"
+    return f"""
+    <div class="inst-card">
+        <div class="inst-label">{label}</div>
+        <div class="{color_class}">{formatted}</div>
+    </div>
+    """
+
+
+def render_pct_card(label, pct, suffix="%"):
+    """百分比卡片：正數紅、負數綠"""
+    if pct > 0:
+        color_class = "inst-value-up"
+    elif pct < 0:
+        color_class = "inst-value-down"
+    else:
+        color_class = "inst-value-flat"
+    return f"""
+    <div class="inst-card">
+        <div class="inst-label">{label}</div>
+        <div class="{color_class}">{pct:+.2f}{suffix}</div>
+    </div>
+    """
+
+
+def style_alert_text(text):
+    """讓警示燈字串裡的 +X% / -X% 套色"""
+    return text
+
+
+# ============================================
 # 主畫面
 # ============================================
 st.title("📊 台股 AI 個股分析")
 st.caption(f"🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞 · "
-           f"FinMind {finmind_token_count} token 池 / Gemini {len(get_gemini_keys())} key 池")
+           f"FinMind {finmind_token_count} token / Gemini {len(gemini_keys)} key")
 
 ic1, ic2 = st.columns([4, 1])
 with ic1:
@@ -570,7 +643,6 @@ with ic2:
 
 st.divider()
 
-# 沒輸入就顯示介紹
 if not (go_btn and sid.strip()):
     if not sid.strip():
         st.info("👆 請輸入股票代號，按「開始分析」")
@@ -587,8 +659,8 @@ if not (go_btn and sid.strip()):
         上市、上櫃、ETF、興櫃股票
 
         ### 🎨 配色說明（台股慣例）
-        - 🔴 紅色 = 上漲
-        - 🟢 綠色 = 下跌
+        - 🔴 紅色 = 上漲 / 正數 / 買進
+        - 🟢 綠色 = 下跌 / 負數 / 賣出
         """)
         st.stop()
 
@@ -606,26 +678,89 @@ if err or r is None:
     st.stop()
 
 
-# 標題列
+# ── 標題列 ──
 st.subheader(f"{r['name']} ({r['id']})  {r['status']}")
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("收盤價", f"{r['close']:.2f}", f"{r['chg']:+.2f}%")
-c2.metric("成交量", f"{r['vol']:,} 張")
-c3.metric("RSI(14)", f"{r['rsi']:.2f}" if r['rsi'] else "N/A")
-c4.metric("更新時間", datetime.now().strftime("%m/%d %H:%M"))
+# 收盤價漲跌：用自訂 HTML 控色
+chg_color = "#C76A6A" if r["chg"] >= 0 else "#7B9E89"
+chg_arrow = "▲" if r["chg"] >= 0 else "▼"
 
-if r["alerts"]["red"] or r["alerts"]["yellow"] or r["alerts"]["green"]:
-    cols = st.columns([1, 1, 1])
-    if r["alerts"]["red"]:
-        cols[0].error("🔴 " + " · ".join(r["alerts"]["red"]))
-    if r["alerts"]["yellow"]:
-        cols[1].warning("🟡 " + " · ".join(r["alerts"]["yellow"]))
-    if r["alerts"]["green"]:
-        cols[2].success("🟢 " + " · ".join(r["alerts"]["green"]))
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    st.markdown(f"""
+    <div class="inst-card">
+        <div class="inst-label">收盤價</div>
+        <div style="color:#3D3833;font-size:28px;font-weight:700;">{r['close']:.2f}</div>
+        <div style="color:{chg_color};font-size:14px;font-weight:600;margin-top:4px;">
+            {chg_arrow} {r['chg']:+.2f}%
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+with c2:
+    st.markdown(f"""
+    <div class="inst-card">
+        <div class="inst-label">成交量</div>
+        <div style="color:#3D3833;font-size:28px;font-weight:700;">{r['vol']:,}</div>
+        <div style="color:#8B7E72;font-size:13px;margin-top:4px;">張</div>
+    </div>
+    """, unsafe_allow_html=True)
+with c3:
+    rsi_color = "#C76A6A" if r["rsi"] and r["rsi"] > 70 else "#7B9E89" if r["rsi"] and r["rsi"] < 30 else "#3D3833"
+    rsi_label = "(超買)" if r["rsi"] and r["rsi"] > 70 else "(超賣)" if r["rsi"] and r["rsi"] < 30 else ""
+    st.markdown(f"""
+    <div class="inst-card">
+        <div class="inst-label">RSI(14)</div>
+        <div style="color:{rsi_color};font-size:28px;font-weight:700;">{r['rsi']:.2f if r['rsi'] else 'N/A'}</div>
+        <div style="color:{rsi_color};font-size:13px;margin-top:4px;">{rsi_label}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with c4:
+    st.markdown(f"""
+    <div class="inst-card">
+        <div class="inst-label">更新時間</div>
+        <div style="color:#3D3833;font-size:22px;font-weight:700;margin-top:6px;">
+            {datetime.now().strftime("%m/%d %H:%M")}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ── 警示燈：每個訊號獨立一個 chip，不再用 · 連起來 ──
+all_alerts = []
+for a in r["alerts"]["red"]:
+    all_alerts.append(("red", a))
+for a in r["alerts"]["yellow"]:
+    all_alerts.append(("yellow", a))
+for a in r["alerts"]["green"]:
+    all_alerts.append(("green", a))
+
+if all_alerts:
+    st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+    chips_html = ""
+    for atype, atext in all_alerts:
+        if atype == "red":
+            chips_html += (
+                f'<span style="display:inline-block;background:#F5DCDC;color:#C76A6A;'
+                f'padding:6px 14px;border-radius:16px;margin:3px 5px 3px 0;font-size:13px;'
+                f'font-weight:500;border:1px solid #E5BFBF;">🔴 {atext}</span>'
+            )
+        elif atype == "yellow":
+            chips_html += (
+                f'<span style="display:inline-block;background:#F5EFD9;color:#A88838;'
+                f'padding:6px 14px;border-radius:16px;margin:3px 5px 3px 0;font-size:13px;'
+                f'font-weight:500;border:1px solid #E5D9A8;">🟡 {atext}</span>'
+            )
+        else:
+            chips_html += (
+                f'<span style="display:inline-block;background:#DBE8E0;color:#5C8169;'
+                f'padding:6px 14px;border-radius:16px;margin:3px 5px 3px 0;font-size:13px;'
+                f'font-weight:500;border:1px solid #B8D0BE;">🟢 {atext}</span>'
+            )
+    st.markdown(chips_html, unsafe_allow_html=True)
 
 st.divider()
 
+
+# ── 5 個分頁 ──
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 技術面",
     "💼 籌碼面",
@@ -655,12 +790,13 @@ with tab1:
 with tab2:
     st.markdown("### 三大法人最新買賣超（張）")
     cc = st.columns(4)
-    cc[0].metric("外資", f"{r['ifor']:+,}")
-    cc[1].metric("投信", f"{r['itru']:+,}")
-    cc[2].metric("自營商", f"{r['idal']:+,}")
-    cc[3].metric("合計", f"{r['itot']:+,}")
+    cc[0].markdown(render_inst_card("外資", r["ifor"]), unsafe_allow_html=True)
+    cc[1].markdown(render_inst_card("投信", r["itru"]), unsafe_allow_html=True)
+    cc[2].markdown(render_inst_card("自營商", r["idal"]), unsafe_allow_html=True)
+    cc[3].markdown(render_inst_card("合計", r["itot"]), unsafe_allow_html=True)
 
     if not r["pivot"].empty:
+        st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
         fig = plot_inst(r["pivot"], r["df"])
         if fig:
             st.plotly_chart(fig, use_container_width=True,
@@ -677,9 +813,20 @@ with tab3:
     st.markdown("### 基本面數據")
     if r["has_rev"]:
         bc = st.columns(3)
-        bc[0].metric("最新月營收", f"{r['rev']:.2f} 億")
-        bc[1].metric("YoY 年增率", f"{r['yoy']:+.2f}%")
-        bc[2].metric("MoM 月增率", f"{r['mom']:+.2f}%")
+        with bc[0]:
+            st.markdown(f"""
+            <div class="inst-card">
+                <div class="inst-label">最新月營收</div>
+                <div style="color:#3D3833;font-size:28px;font-weight:700;">{r['rev']:.2f}</div>
+                <div style="color:#8B7E72;font-size:13px;margin-top:4px;">億元</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with bc[1]:
+            st.markdown(render_pct_card("YoY 年增率", r["yoy"]), unsafe_allow_html=True)
+        with bc[2]:
+            st.markdown(render_pct_card("MoM 月增率", r["mom"]), unsafe_allow_html=True)
+
+        st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
 
         if r["yoy"] > 30:
             st.success(f"🚀 營收高速成長：YoY +{r['yoy']:.1f}%，基本面強勁")
@@ -696,10 +843,10 @@ with tab3:
 
 with tab4:
     st.markdown("### 🤖 Gemini AI 智能解讀")
-    st.caption("由 Google Gemini 2.5 Flash 模型產生的深度分析報告")
+    st.caption("由 Google Gemini 2.5 Flash 模型產生的深度分析報告（自動重試 + 模型降級）")
 
     if st.button("🚀 產生 AI 分析報告", type="primary", key="ai_btn"):
-        with st.spinner("AI 正在思考中，請稍候 10-20 秒..."):
+        with st.spinner("AI 正在思考中（含自動重試），請稍候 10-30 秒..."):
             ma5_str = f"{r['ma5']:.1f}" if r['ma5'] else "N/A"
             ma20_str = f"{r['ma20']:.1f}" if r['ma20'] else "N/A"
             ma60_str = f"{r['ma60']:.1f}" if r['ma60'] else "N/A"
@@ -724,14 +871,14 @@ with tab4:
             st.divider()
             st.caption("⚠️ 本分析由 AI 產生，僅供參考。投資決策請依個人判斷與風險承受能力。")
     else:
-        st.info("👆 點上方按鈕開始 AI 分析（首次分析約需 10-20 秒）")
+        st.info("👆 點上方按鈕開始 AI 分析（自動重試 3 次，含模型降級機制）")
 
 with tab5:
     st.markdown("### 📰 個股最新新聞")
     st.caption("由 Gemini Google Search 即時搜尋最近 7 天相關新聞")
 
     if st.button("🔍 搜尋最新新聞", type="primary", key="news_btn"):
-        with st.spinner("正在搜尋新聞，請稍候 10-20 秒..."):
+        with st.spinner("正在搜尋新聞，請稍候 10-30 秒..."):
             news = get_news(r["name"], r["id"])
             st.markdown(news)
             st.divider()
