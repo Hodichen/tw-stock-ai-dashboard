@@ -724,7 +724,8 @@ with mode_tab1:
     with c3:
         rsi_color = "#C76A6A" if r["rsi"] and r["rsi"] > 70 else "#7B9E89" if r["rsi"] and r["rsi"] < 30 else "#3D3833"
         rsi_label = "(超買)" if r["rsi"] and r["rsi"] > 70 else "(超賣)" if r["rsi"] and r["rsi"] < 30 else ""
-        st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{rsi_color};font-size:28px;font-weight:700;">{f"{r['rsi']:.2f}" if r["rsi"] else "N/A"}</div><div style="color:{rsi_color};font-size:13px;margin-top:4px;">{rsi_label}</div></div>', unsafe_allow_html=True)
+        rsi_disp = f"{r['rsi']:.2f}" if r["rsi"] else "N/A"
+        st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{rsi_color};font-size:28px;font-weight:700;">{rsi_disp}</div><div style="color:{rsi_color};font-size:13px;margin-top:4px;">{rsi_label}</div></div>', unsafe_allow_html=True)
     with c4:
         st.markdown(f'<div class="inst-card"><div class="inst-label">更新時間</div><div style="color:#3D3833;font-size:22px;font-weight:700;margin-top:6px;">{datetime.now().strftime("%m/%d %H:%M")}</div></div>', unsafe_allow_html=True)
 
@@ -793,8 +794,9 @@ with mode_tab2:
         <div class="kv-row"><span class="kv-label">趨勢方向</span><span class="{'kv-value-up' if r['trend'] == '多頭' else 'kv-value-down' if r['trend'] == '空頭' else 'kv-value-yellow'}">{r["trend"]}</span></div>
         </div>""", unsafe_allow_html=True)
     with row1c3:
+        rsi_disp_tab2 = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
         st.markdown(f"""<div class="section-card"><div class="section-title">💹 技術指標</div>
-        <div class="kv-row"><span class="kv-label">RSI(14)</span><span class="kv-value">{f"{r['rsi']:.1f}" if r['rsi'] else "N/A"}</span></div>
+        <div class="kv-row"><span class="kv-label">RSI(14)</span><span class="kv-value">{rsi_disp_tab2}</span></div>
         <div class="kv-row"><span class="kv-label">MACD 狀態</span><span class="kv-value">{r["macd_status"]}</span></div>
         </div>""", unsafe_allow_html=True)
 
@@ -818,7 +820,7 @@ with mode_tab2:
 
 
 # --------------------------------------------
-# 模式 3：🖥️ 高密度戰情版 (新增)
+# 模式 3：🖥️ 高密度戰情版
 # --------------------------------------------
 with mode_tab3:
     # 頂部緊湊標題列
