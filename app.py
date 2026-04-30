@@ -212,7 +212,6 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .val-highlight-down { color: #7B9E89 !important; font-size: 18px !important; font-weight: 800 !important; }
 .val-highlight-neutral { color: #B89243 !important; font-size: 18px !important; font-weight: 800 !important; }
 
-
 .bullet-item {
     color: #4A4540;
     font-size: 13px;
@@ -944,9 +943,9 @@ with mode_tab2:
         </div>""", unsafe_allow_html=True)
 
     st.markdown(f"""
-    <div class="conclusion-box">
-        <div class="conclusion-title">⭐ 整體結論</div>
-        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 18px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
+    <div class="conclusion-box" style="padding: 18px 24px;">
+        <div class="conclusion-title" style="font-size: 16px;">⭐ 整體結論</div>
+        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1148,7 +1147,7 @@ with mode_tab3:
     # --- 底部結論區 (動態放大變色) ---
     st.markdown(f"""
     <div class="conclusion-box" style="padding: 18px 24px;">
-        <div class="conclusion-title" style="font-size: 16px;">整體結論</div>
+        <div class="conclusion-title" style="font-size: 16px;">⭐ 整體結論</div>
         <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
