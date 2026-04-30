@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（三模式：詳細 / 7大重點速覽 / 高密度戰情版）
+台股 AI 個股分析儀表板（三模式：詳細 / 7大重點速覽 / 旗艦全景儀表板）
 """
 import streamlit as st
 import pandas as pd
@@ -99,7 +99,7 @@ hr, [data-testid="stDivider"] { border-color: #D4CABB !important; background: #D
 .stSpinner > div { border-top-color: #8B9D83 !important; }
 .js-plotly-plot { background: #FAF6F0 !important; border-radius: 8px; padding: 6px; }
 header[data-testid="stHeader"] { background: #F5F1EB !important; }
-.block-container { padding-top: 2rem !important; max-width: 1400px !important; }
+.block-container { padding-top: 2rem !important; max-width: 1600px !important; } /* 寬度放寬以適應儀表板 */
 
 /* 詳細模式 - 法人卡片 */
 .inst-card {
@@ -172,27 +172,28 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .section-card {
     background: #FAF6F0;
     border: 1px solid #E5DDD0;
-    border-radius: 12px;
-    padding: 18px;
+    border-radius: 8px;
+    padding: 14px;
     height: 100%;
-    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.06);
-    margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.04);
+    margin-bottom: 10px;
 }
 .section-title {
     color: #8B6F47;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     border-bottom: 1px solid #E5DDD0;
-    padding-bottom: 8px;
-    margin-bottom: 12px;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
     letter-spacing: 0.5px;
+    text-align: center;
 }
 .kv-row {
     display: flex;
     justify-content: space-between;
-    padding: 6px 0;
+    padding: 4px 0;
     border-bottom: 1px dashed #E5DDD0;
-    font-size: 14px;
+    font-size: 13px;
 }
 .kv-row:last-child { border-bottom: none; }
 .kv-label { color: #8B7E72; }
@@ -205,38 +206,60 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .bullet-item {
     color: #4A4540;
     font-size: 13px;
-    padding: 4px 0 4px 20px;
+    padding: 4px 0 4px 16px;
     position: relative;
-    line-height: 1.7;
+    line-height: 1.6;
 }
 .bullet-item::before {
     content: "●";
     color: #B89243;
     position: absolute;
     left: 0;
-    font-size: 10px;
+    font-size: 9px;
     top: 7px;
 }
 
 .conclusion-box {
     background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%);
     border: 2px solid #C9B689;
-    border-radius: 12px;
-    padding: 18px 22px;
-    margin: 16px 0;
-    box-shadow: 0 2px 10px rgba(184, 146, 67, 0.1);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(184, 146, 67, 0.1);
 }
 .conclusion-title {
-    color: #8B6F47;
+    color: #FAF6F0;
+    background: #8B6F47;
+    padding: 6px 12px;
+    border-radius: 6px;
     font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 6px;
+    font-weight: 700;
+    margin-right: 16px;
+    white-space: nowrap;
 }
 .conclusion-text {
     color: #5C5048;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
-    line-height: 1.7;
+    line-height: 1.6;
+}
+
+/* 劇本小卡 */
+.scenario-box {
+    border: 1px solid #D4CABB;
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+    background: #FFFFFF;
+}
+.scenario-title {
+    font-weight: 700;
+    padding: 4px 0;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -337,10 +360,13 @@ def analyze(stock_id):
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").reset_index(drop=True)
 
+    industry_category = "未知 / ETF"
     try:
         info = dl.taiwan_stock_info()
         m = info[info["stock_id"] == stock_id]
         name = m["stock_name"].iloc[0] if not m.empty else stock_id
+        if "industry_category" in m.columns and not m.empty:
+            industry_category = str(m["industry_category"].iloc[0])
     except:
         name = stock_id
 
@@ -485,9 +511,22 @@ def analyze(stock_id):
     resist_hi = round(high_recent, 2)
     support_lo = round(ma20_v * 0.97, 2) if ma20_v else round(cl_v * 0.95, 2)
     support_hi = round(ma20_v, 2) if ma20_v else round(cl_v * 0.97, 2)
+    
+    # 計算短線勝率 / 偏多分數 (供儀表板使用)
+    score = 50
+    if trend == "多頭": score += 15
+    elif trend == "空頭": score -= 15
+    if rsi_v:
+        if rsi_v > 70: score -= 10
+        elif rsi_v < 30: score += 10
+        elif rsi_v > 50: score += 5
+    if macd_v and macd_v > 0: score += 10
+    if itot > 0: score += 15
+    elif itot < 0: score -= 15
+    score = max(0, min(100, score))
 
     return {
-        "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev,
+        "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev, "industry": industry_category,
         "df": df, "pivot": pivot,
         "close": float(lat["close"]), "chg": chg,
         "vol": int(lat["volume"] / 1000),
@@ -499,7 +538,7 @@ def analyze(stock_id):
         "trend": trend,
         "ifor": ifor, "itru": itru, "idal": idal, "itot": itot,
         "yoy": yoy, "mom": mom, "rev": rev,
-        "status": status, "alerts": alerts,
+        "status": status, "alerts": alerts, "score": score,
         "high_30": high_30, "low_30": low_30,
         "high_recent": high_recent, "low_recent": low_recent,
         "resist_lo": resist_lo, "resist_hi": resist_hi,
@@ -588,7 +627,7 @@ def get_news(stock_name, stock_id):
 
 
 # ============================================
-# 圖表
+# 圖表與儀表組件
 # ============================================
 MORANDI = {
     "bg": "#FAF6F0", "grid": "#E5DDD0", "axis": "#8B7E72", "text": "#5C5048",
@@ -600,7 +639,7 @@ MORANDI = {
     "total": "#7B9E89", "price": "#CBA365",
 }
 
-def plot_kline(df, name, sid):
+def plot_kline(df, name, sid, height=620):
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04,
         row_heights=[0.45, 0.13, 0.21, 0.21],
@@ -627,10 +666,10 @@ def plot_kline(df, name, sid):
         fig.add_trace(go.Scatter(x=df["date"], y=df["MACD_sig"], name="DEA", line=dict(color=MORANDI["macd_dea"], width=1.4)), row=4, col=1)
     
     fig.update_layout(
-        template="plotly_white", height=620, xaxis_rangeslider_visible=False, hovermode="x unified",
+        template="plotly_white", height=height, xaxis_rangeslider_visible=False, hovermode="x unified",
         plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"],
         font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"),
-        margin=dict(l=10, r=10, t=40, b=10),
+        margin=dict(l=10, r=10, t=30, b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(255,255,255,0.7)")
     )
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])], gridcolor=MORANDI["grid"], showgrid=True, linecolor=MORANDI["axis"], color=MORANDI["text"])
@@ -654,6 +693,30 @@ def plot_inst(pivot, df):
     fig.update_yaxes(title_text="法人(張)", secondary_y=False, gridcolor=MORANDI["grid"], color=MORANDI["text"])
     fig.update_yaxes(title_text="股價(元)", secondary_y=True, gridcolor=MORANDI["grid"], color=MORANDI["text"])
     fig.update_xaxes(gridcolor=MORANDI["grid"], color=MORANDI["text"])
+    return fig
+
+def plot_morandi_gauge(score):
+    """產出儀表板的測速儀圖表"""
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = score,
+        number = {'font': {'size': 32, 'color': '#3D3833'}},
+        gauge = {
+            'axis': {'range': [None, 100], 'visible': False},
+            'bar': {'color': "#5C5048", 'thickness': 0.15},
+            'steps': [
+                {'range': [0, 40], 'color': "#DBE8E0"},  # 綠色 (偏弱)
+                {'range': [40, 70], 'color': "#F5EFD9"}, # 黃色 (中性)
+                {'range': [70, 100], 'color': "#F5DCDC"} # 紅色 (偏多)
+            ],
+        }
+    ))
+    fig.update_layout(
+        height=180, 
+        margin=dict(l=15, r=15, t=10, b=0), 
+        paper_bgcolor="rgba(0,0,0,0)", 
+        font=dict(family="Arial, 'Noto Sans TC'")
+    )
     return fig
 
 def render_inst_card(label, value):
@@ -686,7 +749,7 @@ if not (go_btn and sid.strip()):
         ### 🎯 三種顯示模式
         - 📊 **詳細模式**：完整數據表格 + K 線圖 + 法人柱狀圖（適合深入研究）
         - 🎯 **7 大重點速覽**：6 區塊重點圖卡 + 整體結論（適合快速判讀）
-        - 🖥️ **高密度戰情版**：高壓密度的單頁全景儀表板（看盤必備）
+        - 🖥️ **旗艦全景儀表板**：參考專業看盤軟體的高密度戰情室（看盤必備）
         """)
         st.stop()
 
@@ -706,7 +769,7 @@ if err or r is None:
 # ============================================
 # 模式切換（3個 Tabs）
 # ============================================
-mode_tab1, mode_tab2, mode_tab3 = st.tabs(["📊 詳細模式", "🎯 7 大重點速覽", "🖥️ 高密度戰情版"])
+mode_tab1, mode_tab2, mode_tab3 = st.tabs(["📊 詳細模式", "🎯 7 大重點速覽", "🖥️ 旗艦全景儀表板"])
 
 # --------------------------------------------
 # 模式 1：詳細模式
@@ -820,121 +883,176 @@ with mode_tab2:
 
 
 # --------------------------------------------
-# 模式 3：🖥️ 高密度戰情版
+# 模式 3：🖥️ 旗艦全景儀表板 (致敬專業看盤軟體)
 # --------------------------------------------
 with mode_tab3:
-    # 頂部緊湊標題列
+    # --- 頂端資訊條 ---
     chg_color = '#C76A6A' if r['chg'] >= 0 else '#7B9E89'
-    chg_sign = '▲' if r['chg'] >= 0 else '▼'
     st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #E5DDD0; padding-bottom: 8px; margin-bottom: 12px; margin-top: -10px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #E5DDD0; padding-bottom:8px; margin-bottom:12px;">
         <div>
-            <span style="font-size: 26px; font-weight: 700; color: #5C5048; letter-spacing: 1px;">{r['name']} ({r['id']})</span>
-            <span style="font-size: 14px; font-weight: 600; background: #FAF6F0; color: #8B6F47; padding: 4px 10px; border-radius: 12px; margin-left: 12px; border: 1px solid #D4CABB;">狀態: {r['status']}</span>
+            <span style="font-size:24px; font-weight:700; color:#5C5048; letter-spacing:1px;">{r['name']} ({r['id']})</span>
+            <span style="font-size:13px; font-weight:600; background:#FAF6F0; color:#8B6F47; padding:4px 8px; border-radius:4px; margin-left:12px; border:1px solid #D4CABB;">{r['industry']}</span>
         </div>
-        <div style="text-align: right;">
-            <span style="font-size: 30px; font-weight: 800; color: {chg_color};">{r['close']:.2f}</span>
-            <span style="font-size: 18px; font-weight: 700; color: {chg_color}; margin-left: 10px;">{chg_sign} {r['chg']:+.2f}%</span>
+        <div style="text-align:right;">
+            <span style="font-size:14px; font-weight:600; color:#8B7E72; margin-right:8px;">日 K 線</span>
+            <span style="font-size:28px; font-weight:800; color:{chg_color};">{r['close']:.2f}</span>
+            <span style="font-size:16px; font-weight:700; color:{chg_color}; margin-left:8px;">{r['chg']:+.2f}%</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 中段：K線圖(佔3/4寬度) + 緊湊技術數據(佔1/4寬度)
-    col_kline, col_tech = st.columns([3, 1])
+    # --- 排版：上半部 (圖表 60% | 資訊面板 40%) ---
+    top_left, top_right = st.columns([6, 4])
     
-    with col_kline:
-        fig_compact = plot_kline(r["df"], r["name"], r["id"])
-        # 將圖表高度壓低，適合戰情室一目了然的風格
-        fig_compact.update_layout(height=480, margin=dict(t=20, b=10, l=10, r=10))
-        st.plotly_chart(fig_compact, use_container_width=True, config={"displayModeBar": False})
+    with top_left:
+        st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=580), use_container_width=True, config={"displayModeBar": False})
 
-    with col_tech:
-        # 技術面微型面板
-        trend_cls = "kv-value-up" if r['trend'] == "多頭" else "kv-value-down" if r['trend'] == "空頭" else "kv-value-yellow"
-        rsi_cls = "kv-value-up" if r['rsi'] and r['rsi'] > 70 else "kv-value-down" if r['rsi'] and r['rsi'] < 30 else "kv-value"
-        macd_cls = "kv-value-up" if "多頭" in r['macd_status'] else "kv-value-down" if "空頭" in r['macd_status'] else "kv-value"
-
-        st.markdown(f"""
-        <div class="section-card" style="padding: 12px 16px; margin-bottom: 12px;">
-            <div class="section-title" style="font-size: 14px; margin-bottom: 8px; padding-bottom: 4px;">📊 技術參數 (日K)</div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">趨勢方向</span><span class="{trend_cls}">{r["trend"]}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">MA5 均線</span><span class="kv-value-yellow">{r['ma5']:.2f}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">MA20 月線</span><span class="kv-value-cyan">{r['ma20']:.2f}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">MA60 季線</span><span style="color:#8B5F7A; font-weight:700;">{r['ma60']:.2f}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">RSI(14)</span><span class="{rsi_cls}">{r['rsi']:.1f}</span></div>
-            <div class="kv-row" style="padding: 4px 0; border: none;"><span class="kv-label">MACD 動能</span><span class="{macd_cls}">{r['macd_status']}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 籌碼面微型面板
-        itot_cls = "kv-value-up" if r['itot'] > 0 else "kv-value-down" if r['itot'] < 0 else "kv-value"
-        st.markdown(f"""
-        <div class="section-card" style="padding: 12px 16px; margin-bottom: 0;">
-            <div class="section-title" style="font-size: 14px; margin-bottom: 8px; padding-bottom: 4px;">👥 三大法人 (近1日)</div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">外資</span><span class="{'kv-value-up' if r['ifor']>0 else 'kv-value-down' if r['ifor']<0 else 'kv-value'}">{r["ifor"]:+,}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">投信</span><span class="{'kv-value-up' if r['itru']>0 else 'kv-value-down' if r['itru']<0 else 'kv-value'}">{r["itru"]:+,}</span></div>
-            <div class="kv-row" style="padding: 4px 0;"><span class="kv-label">自營商</span><span class="{'kv-value-up' if r['idal']>0 else 'kv-value-down' if r['idal']<0 else 'kv-value'}">{r["idal"]:+,}</span></div>
-            <div class="kv-row" style="padding: 4px 0; border: none;"><span class="kv-label">合計買賣</span><span class="{itot_cls}">{r["itot"]:+,}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # 底部高密度數據區塊 (一排4個卡片)
-    bc1, bc2, bc3, bc4 = st.columns(4)
-    
-    with bc1:
-        vol_cls = "kv-value-up" if r['vr'] and r['vr'] > 1.5 else "kv-value-down" if r['vr'] and r['vr'] < 0.7 else "kv-value"
-        st.markdown(f"""
-        <div class="section-card" style="padding: 12px 16px;">
-            <div class="section-title" style="font-size: 14px; margin-bottom: 6px;">📦 量價分析</div>
-            <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">今日成量</span><span class="kv-value">{r["vol"]:,} 張</span></div>
-            <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">量比倍數</span><span class="{vol_cls}">{r['vr']:.2f}x</span></div>
-            <div class="kv-row" style="padding: 3px 0; border: none;"><span class="kv-label">量能判定</span><span class="{vol_cls}">{r['vol_status']}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with bc2:
-        high30_pct = ((r['close'] / r['high_30'] - 1) * 100) if r['high_30'] else 0
-        st.markdown(f"""
-        <div class="section-card" style="padding: 12px 16px;">
-            <div class="section-title" style="font-size: 14px; margin-bottom: 6px;">🎯 關鍵點位</div>
-            <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">壓力區</span><span class="kv-value-up">{r["resist_lo"]:.2f}</span></div>
-            <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">支撐區</span><span class="kv-value-down">{r["support_hi"]:.2f}</span></div>
-            <div class="kv-row" style="padding: 3px 0; border: none;"><span class="kv-label">距月高點</span><span class="kv-value">{high30_pct:+.1f}%</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with bc3:
-        if r["has_rev"]:
+    with top_right:
+        # 右上：總覽與概況 (2欄)
+        r1_c1, r1_c2 = st.columns(2)
+        with r1_c1:
+            # 預處理變數，避免 f-string 衝突
+            trend_val = f"<span class='{'kv-value-up' if r['trend']=='多頭' else 'kv-value-down' if r['trend']=='空頭' else 'kv-value-yellow'}'>{r['trend']}</span>"
+            kd_str = "高檔鈍化" if (r['k'] and r['k']>80) else "低檔鈍化" if (r['k'] and r['k']<20) else "中性區間"
+            macd_str = r['macd_status']
+            vol_str = r['vol_status']
+            pv_str = "價量齊揚" if (r['chg']>0 and r['vr'] and r['vr']>1) else "價跌量縮" if (r['chg']<0 and r['vr'] and r['vr']<1) else "中性"
+            
             st.markdown(f"""
-            <div class="section-card" style="padding: 12px 16px;">
-                <div class="section-title" style="font-size: 14px; margin-bottom: 6px;">🏢 營收基本面</div>
-                <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">最新月營收</span><span class="kv-value">{r['rev']:.2f} 億</span></div>
-                <div class="kv-row" style="padding: 3px 0;"><span class="kv-label">YoY 年增</span><span class="{'kv-value-up' if r['yoy']>0 else 'kv-value-down'}">{r['yoy']:+.2f}%</span></div>
-                <div class="kv-row" style="padding: 3px 0; border: none;"><span class="kv-label">MoM 月增</span><span class="{'kv-value-up' if r['mom']>0 else 'kv-value-down'}">{r['mom']:+.2f}%</span></div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class="section-card" style="padding: 12px 16px;">
-                <div class="section-title" style="font-size: 14px; margin-bottom: 6px;">🏢 營收基本面</div>
-                <div style="color:#8B7E72; font-size:13px; text-align:center; margin-top:20px;">📌 ETF/興櫃<br>無月營收資料</div>
+            <div class="section-card">
+                <div class="section-title">📊 技術分析總覽</div>
+                <div class="kv-row"><span class="kv-label">↗ 趨勢方向</span>{trend_val}</div>
+                <div class="kv-row"><span class="kv-label">★ MA 狀態</span><span class="kv-value-yellow">多週期排列</span></div>
+                <div class="kv-row"><span class="kv-label">∿ KD 指標</span><span class="kv-value">{kd_str}</span></div>
+                <div class="kv-row"><span class="kv-label">📶 MACD</span><span class="kv-value">{macd_str}</span></div>
+                <div class="kv-row"><span class="kv-label">📦 成交量</span><span class="kv-value">{vol_str}</span></div>
+                <div class="kv-row"><span class="kv-label">⚖ 量價關係</span><span class="kv-value">{pv_str}</span></div>
             </div>
             """, unsafe_allow_html=True)
             
-    with bc4:
-        if "🔴" in r['status']: ops = "短線追高風險高<br>建議逢高分批減碼"
-        elif r['trend'] == "多頭" and "🟢" in r['status']: ops = "技術面健康可佈局<br>支撐區為加碼買點"
-        elif r['trend'] == "空頭": ops = "趨勢偏空建議觀望<br>破支撐應停損出場"
-        else: ops = "目前盤整等待方向<br>區間操作來回為主"
-        
+        with r1_c2:
+            # 營收與概況
+            rev_str = f"{r['yoy']:+.2f}%" if r['has_rev'] else "N/A"
+            rev_cls = "kv-value-up" if (r['has_rev'] and r['yoy']>0) else "kv-value-down"
+            
+            st.markdown(f"""
+            <div class="section-card" style="margin-bottom:10px;">
+                <div class="section-title">🏢 基本概況</div>
+                <div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r['industry']}</span></div>
+                <div class="kv-row"><span class="kv-label">單月營收</span><span class="kv-value">{r['rev']:.2f} 億</span></div>
+                <div class="kv-row"><span class="kv-label">營收年增</span><span class="{rev_cls}">{rev_str}</span></div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 籌碼分析
+            itot_cls = "kv-value-up" if r['itot']>0 else "kv-value-down" if r['itot']<0 else "kv-value"
+            st.markdown(f"""
+            <div class="section-card">
+                <div class="section-title">👥 籌碼分析</div>
+                <div class="kv-row"><span class="kv-label">外資動向</span><span class="{'kv-value-up' if r['ifor']>0 else 'kv-value-down'}">{r["ifor"]:+,} 張</span></div>
+                <div class="kv-row"><span class="kv-label">投信動向</span><span class="{'kv-value-up' if r['itru']>0 else 'kv-value-down'}">{r["itru"]:+,} 張</span></div>
+                <div class="kv-row" style="background:#F5EFD9; padding:4px; border-radius:4px;"><span class="kv-label" style="color:#A88838;font-weight:600;">合計買賣</span><span class="{itot_cls}">{r["itot"]:+,} 張</span></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # 右中：燈號、勝率儀表板、價位
+        r2_c1, r2_c2, r2_c3 = st.columns([1, 1.2, 1])
+        with r2_c1:
+            risk = "high" if "🔴" in r['status'] else "mid" if "🟡" in r['status'] else "low"
+            op_h = 1 if risk=="high" else 0.2
+            op_m = 1 if risk=="mid" else 0.2
+            op_l = 1 if risk=="low" else 0.2
+            st.markdown(f"""
+            <div class="section-card" style="text-align:center;">
+                <div class="section-title">🚦 短線風險</div>
+                <div style="opacity:{op_h}; color:#C76A6A; font-weight:700; padding:4px 0;">🔴 高風險</div>
+                <div style="opacity:{op_m}; color:#B89243; font-weight:700; padding:4px 0;">🟡 需觀察</div>
+                <div style="opacity:{op_l}; color:#5C8169; font-weight:700; padding:4px 0;">🟢 低風險</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with r2_c2:
+            st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title" style="margin-bottom:0;">🎯 偏多分數</div>', unsafe_allow_html=True)
+            st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
+        with r2_c3:
+            st.markdown(f"""
+            <div class="section-card">
+                <div class="section-title">🎯 關鍵價位</div>
+                <div style="text-align:center; padding-bottom:8px; border-bottom:1px solid #E5DDD0;">
+                    <div style="color:#C76A6A; font-size:12px;">壓力區</div>
+                    <div style="font-weight:700; font-size:18px;">{r['resist_hi']:.2f}</div>
+                </div>
+                <div style="text-align:center; padding-top:8px;">
+                    <div style="color:#7B9E89; font-size:12px;">支撐區</div>
+                    <div style="font-weight:700; font-size:18px;">{r['support_hi']:.2f}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # --- 排版：下半部 (劇本區與型態) ---
+    bot_c1, bot_c2, bot_c3 = st.columns([2.5, 2.5, 5])
+    
+    with bot_c1:
         st.markdown(f"""
-        <div class="section-card" style="padding: 12px 16px; background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%); border-color: #C9B689;">
-            <div class="section-title" style="font-size: 14px; margin-bottom: 6px; border-bottom-color: #DCCFA8;">💡 操作策略</div>
-            <div style="color:#5C5048; font-size:14px; line-height:1.8; font-weight:600; margin-top: 8px;">
-                {ops}
+        <div class="section-card">
+            <div class="section-title">🔎 型態與訊號</div>
+            <div class="bullet-item">MA均線：{'多頭' if r['ma5'] and r['ma20'] and r['ma5']>r['ma20'] else '偏空'}排列</div>
+            <div class="bullet-item">RSI狀態：{'超買' if r['rsi'] and r['rsi']>70 else '超賣' if r['rsi'] and r['rsi']<30 else '中立'}</div>
+            <div class="bullet-item">MACD柱：{r['macd_status']}</div>
+            <div class="bullet-item">法人籌碼：{'偏多' if r['itot']>0 else '偏空'}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with bot_c2:
+        st.markdown(f"""
+        <div class="section-card">
+            <div class="section-title">🗓 多週期概覽 (MA)</div>
+            <div class="kv-row"><span class="kv-label">日 K 級別</span><span class="{'kv-value-up' if r['trend']=='多頭' else 'kv-value-down'}">{r['trend']}</span></div>
+            <div class="kv-row"><span class="kv-label">短線位階</span><span class="kv-value-yellow">觀望 20 日線</span></div>
+            <div class="kv-row"><span class="kv-label">中線位階</span><span class="kv-value-cyan">季線 {r['ma60']:.2f}</span></div>
+            <div class="kv-row"><span style="color:#8B7E72; font-size:12px; margin-top:4px;">*位階依 MA 均線判定</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with bot_c3:
+        # 隔日操作劇本推算
+        c = r['close']
+        res = r['resist_hi']
+        sup = r['support_hi']
+        st.markdown(f"""
+        <div class="section-card" style="background: #F5EFE5; border: 1px solid #D4CABB;">
+            <div class="section-title" style="margin-bottom:8px;">📝 隔日操作劇本 (程式推演僅供參考)</div>
+            <div style="display:flex; gap:10px;">
+                <div class="scenario-box" style="flex:1;">
+                    <div class="scenario-title" style="background:#FBEDED; color:#C76A6A;">① 開高 (強勢)</div>
+                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
+                        進場：{(c*1.01):.2f}<br>停損：{(c*0.99):.2f}<br>目標：{res:.2f}
+                    </div>
+                </div>
+                <div class="scenario-box" style="flex:1;">
+                    <div class="scenario-title" style="background:#F5EFD9; color:#A88838;">② 震盪 (盤整)</div>
+                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
+                        進場：{c:.2f}<br>停損：{sup:.2f}<br>目標：{res:.2f}
+                    </div>
+                </div>
+                <div class="scenario-box" style="flex:1;">
+                    <div class="scenario-title" style="background:#EAF1EC; color:#5C8169;">③ 開低 (弱勢)</div>
+                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
+                        進場：{(c*0.98):.2f}<br>停損：{(sup*0.98):.2f}<br>目標：{c:.2f}
+                    </div>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # --- 底部結論區 ---
+    st.markdown(f"""
+    <div class="conclusion-box">
+        <div class="conclusion-title">整體結論</div>
+        <div class="conclusion-text">{generate_overall_conclusion(r)}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 st.divider()
