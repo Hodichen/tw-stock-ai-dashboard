@@ -114,24 +114,24 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .inst-value-down { color: #7B9E89; font-size: 28px; font-weight: 700; }
 .inst-value-flat { color: #8B7E72; font-size: 28px; font-weight: 700; }
 
-/* === 7 大重點速覽：深藍科技卡片 === */
+/* === 7 大重點速覽：米白護眼卡片 === */
 .overview-header {
-    background: linear-gradient(135deg, #1a2845 0%, #0f1a30 100%);
-    border: 1px solid #3a5080;
+    background: linear-gradient(135deg, #FAF6F0 0%, #F5EFE5 100%);
+    border: 1px solid #D4CABB;
     border-radius: 12px;
     padding: 18px 24px;
     margin-bottom: 16px;
-    box-shadow: 0 4px 16px rgba(26, 40, 69, 0.15);
+    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.08);
 }
 .overview-title {
-    color: #FFD93D;
+    color: #5C5048;
     font-size: 24px;
     font-weight: 700;
     margin-bottom: 6px;
     letter-spacing: 1px;
 }
 .overview-subtitle {
-    color: #6B9FFF;
+    color: #8B7E72;
     font-size: 14px;
     margin-bottom: 12px;
 }
@@ -142,27 +142,27 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
     align-items: center;
 }
 .overview-pill {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(107, 159, 255, 0.3);
-    color: #E0E6F0;
+    background: #FFFFFF;
+    border: 1px solid #D4CABB;
+    color: #5C5048;
     padding: 6px 14px;
     border-radius: 16px;
     font-size: 13px;
     font-weight: 500;
 }
 .overview-pill-red {
-    background: rgba(199, 106, 106, 0.15);
-    border: 1px solid rgba(199, 106, 106, 0.4);
-    color: #FF8888;
+    background: #FBEDED;
+    border: 1px solid #E5BFBF;
+    color: #C76A6A;
     padding: 6px 14px;
     border-radius: 16px;
     font-size: 14px;
     font-weight: 600;
 }
 .overview-pill-green {
-    background: rgba(123, 158, 137, 0.15);
-    border: 1px solid rgba(123, 158, 137, 0.4);
-    color: #6BCF7F;
+    background: #EAF1EC;
+    border: 1px solid #B8D0BE;
+    color: #5C8169;
     padding: 6px 14px;
     border-radius: 16px;
     font-size: 14px;
@@ -170,19 +170,19 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 }
 
 .section-card {
-    background: linear-gradient(135deg, #1a2845 0%, #0f1a30 100%);
-    border: 1px solid #2a3a5a;
+    background: #FAF6F0;
+    border: 1px solid #E5DDD0;
     border-radius: 12px;
     padding: 18px;
     height: 100%;
-    box-shadow: 0 2px 12px rgba(26, 40, 69, 0.12);
+    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.06);
     margin-bottom: 14px;
 }
 .section-title {
-    color: #FFD93D;
+    color: #8B6F47;
     font-size: 16px;
     font-weight: 700;
-    border-bottom: 1px solid #2a3a5a;
+    border-bottom: 1px solid #E5DDD0;
     padding-bottom: 8px;
     margin-bottom: 12px;
     letter-spacing: 0.5px;
@@ -191,19 +191,19 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
     display: flex;
     justify-content: space-between;
     padding: 6px 0;
-    border-bottom: 1px dashed #2a3a5a;
+    border-bottom: 1px dashed #E5DDD0;
     font-size: 14px;
 }
 .kv-row:last-child { border-bottom: none; }
-.kv-label { color: #8b9bb8; }
-.kv-value { color: #fff; font-weight: 600; }
-.kv-value-up { color: #FF8888; font-weight: 700; }
-.kv-value-down { color: #6BCF7F; font-weight: 700; }
-.kv-value-yellow { color: #FFD93D; font-weight: 700; }
-.kv-value-cyan { color: #6B9FFF; font-weight: 700; }
+.kv-label { color: #8B7E72; }
+.kv-value { color: #3D3833; font-weight: 600; }
+.kv-value-up { color: #C76A6A; font-weight: 700; }
+.kv-value-down { color: #7B9E89; font-weight: 700; }
+.kv-value-yellow { color: #B89243; font-weight: 700; }
+.kv-value-cyan { color: #5A87A0; font-weight: 700; }
 
 .bullet-item {
-    color: #E0E6F0;
+    color: #4A4540;
     font-size: 13px;
     padding: 4px 0 4px 20px;
     position: relative;
@@ -211,37 +211,38 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 }
 .bullet-item::before {
     content: "●";
-    color: #FFD93D;
+    color: #B89243;
     position: absolute;
     left: 0;
     font-size: 10px;
     top: 7px;
 }
 .bullet-item-strong {
-    color: #FFD93D;
+    color: #8B6F47;
     font-weight: 600;
 }
 
 .conclusion-box {
-    background: linear-gradient(135deg, #1a3050 0%, #0f2040 100%);
-    border: 2px solid #3a5080;
+    background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%);
+    border: 2px solid #C9B689;
     border-radius: 12px;
     padding: 18px 22px;
     margin: 16px 0;
+    box-shadow: 0 2px 10px rgba(184, 146, 67, 0.1);
 }
 .conclusion-icon {
-    color: #FFD93D;
+    color: #B89243;
     font-size: 18px;
     margin-right: 8px;
 }
 .conclusion-title {
-    color: #6B9FFF;
+    color: #8B6F47;
     font-size: 14px;
     font-weight: 600;
     margin-bottom: 6px;
 }
 .conclusion-text {
-    color: #FFD93D;
+    color: #5C5048;
     font-size: 16px;
     font-weight: 600;
     line-height: 1.7;
@@ -1060,14 +1061,14 @@ with mode_tab2:
         <div class="overview-title">{r['name']} {r['id']} ｜ 7 大重點速覽</div>
         <div class="overview-subtitle">Q版講師帶你看懂：{r['trend']}趨勢、技術指標、籌碼分析</div>
         <div class="overview-pills">
-            <span class="overview-pill"><span style="color:#8b9bb8;">收盤</span>
-                <span style="color:#fff;font-weight:700;font-size:16px;margin-left:6px;">{r['close']:.2f}</span></span>
+            <span class="overview-pill"><span style="color:#8B7E72;">收盤</span>
+                <span style="color:#3D3833;font-weight:700;font-size:16px;margin-left:6px;">{r['close']:.2f}</span></span>
             <span class="{'overview-pill-red' if r['chg'] >= 0 else 'overview-pill-green'}">{chg_arrow_top} {r['chg']:+.2f}%</span>
-            <span class="overview-pill"><span style="color:#8b9bb8;">成交量</span>
-                <span style="color:#fff;font-weight:700;margin-left:6px;">{r['vol']:,}</span>
-                <span style="color:#8b9bb8;font-size:11px;margin-left:2px;">張</span></span>
-            <span class="overview-pill"><span style="color:#8b9bb8;">狀態</span>
-                <span style="color:#FFD93D;font-weight:600;margin-left:6px;">{r['status']}</span></span>
+            <span class="overview-pill"><span style="color:#8B7E72;">成交量</span>
+                <span style="color:#3D3833;font-weight:700;margin-left:6px;">{r['vol']:,}</span>
+                <span style="color:#8B7E72;font-size:11px;margin-left:2px;">張</span></span>
+            <span class="overview-pill"><span style="color:#8B7E72;">狀態</span>
+                <span style="color:#B89243;font-weight:600;margin-left:6px;">{r['status']}</span></span>
         </div>
     </div>
     """
@@ -1103,7 +1104,7 @@ with mode_tab2:
             f'<span class="kv-value-cyan">{r["low_recent"]:.2f}</span></div>'
             f'<div class="kv-row"><span class="kv-label">距高點</span>'
             f'<span class="kv-value">{high30_pct:+.1f}%</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
             f'<div class="bullet-item">{st_text}</div>'
             f'</div>'
             '</div>'
@@ -1136,8 +1137,8 @@ with mode_tab2:
             f'<div class="kv-row"><span class="kv-label">MA20</span>'
             f'<span class="kv-value-cyan">{ma20}</span></div>'
             f'<div class="kv-row"><span class="kv-label">MA60</span>'
-            f'<span class="kv-value" style="color:#B0889F;">{ma60}</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
+            f'<span class="kv-value" style="color:#8B5F7A;">{ma60}</span></div>'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
             f'<div class="bullet-item">{trend_text}</div>'
             f'</div>'
             '</div>'
@@ -1184,7 +1185,7 @@ with mode_tab2:
             f'<span class="{macd_cls}">{macd_disp}</span></div>'
             f'<div class="kv-row"><span class="kv-label">MACD 狀態</span>'
             f'<span class="{macd_cls}">{r["macd_status"]}</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
             f'<div class="bullet-item">{tech_summary}</div>'
             f'</div>'
             '</div>'
@@ -1226,7 +1227,7 @@ with mode_tab2:
             f'<span class="{vol_cls}">{r["vol_status"]}</span></div>'
             f'<div class="kv-row"><span class="kv-label">型態研判</span>'
             f'<span class="kv-value-yellow">{type_text}</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
             f'<div class="bullet-item">{vol_text}</div>'
             f'</div>'
             '</div>'
@@ -1262,7 +1263,7 @@ with mode_tab2:
             f'<span class="{idal_cls}">{r["idal"]:+,} 張</span></div>'
             f'<div class="kv-row"><span class="kv-label">合計</span>'
             f'<span class="{itot_cls}">{r["itot"]:+,} 張</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
             f'<div class="bullet-item">{chip_text}</div>'
             f'</div>'
             '</div>'
@@ -1292,8 +1293,8 @@ with mode_tab2:
             f'<span class="kv-value-down">{r["support_lo"]:.2f} ~ {r["support_hi"]:.2f}</span></div>'
             f'<div class="kv-row"><span class="kv-label">短線觀察</span>'
             f'<span class="kv-value-yellow">20 日線附近</span></div>'
-            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #2a3a5a;">'
-            f'<div style="color:#FFD93D;font-size:13px;font-weight:600;margin-bottom:4px;">💡 操作建議</div>'
+            f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #E5DDD0;">'
+            f'<div style="color:#8B6F47;font-size:13px;font-weight:600;margin-bottom:4px;">💡 操作建議</div>'
             f'{ops_html}'
             f'</div>'
             '</div>'
