@@ -99,7 +99,7 @@ hr, [data-testid="stDivider"] { border-color: #D4CABB !important; background: #D
 .stSpinner > div { border-top-color: #8B9D83 !important; }
 .js-plotly-plot { background: #FAF6F0 !important; border-radius: 8px; padding: 6px; }
 header[data-testid="stHeader"] { background: #F5F1EB !important; }
-.block-container { padding-top: 2rem !important; max-width: 1600px !important; } /* 寬度放寬以適應儀表板 */
+.block-container { padding-top: 2rem !important; max-width: 1600px !important; }
 
 /* 詳細模式 - 法人卡片 */
 .inst-card {
@@ -766,6 +766,9 @@ if err or r is None:
     st.error(f"❌ {err or '分析失敗'}")
     st.stop()
 
+# 動態判斷結論顏色 (分數>=60為紅, <=40為綠, 介於中間為棕灰色)
+conclusion_color = "#C76A6A" if r['score'] >= 60 else "#7B9E89" if r['score'] <= 40 else "#5C5048"
+
 # ============================================
 # 模式切換（3個 Tabs）
 # ============================================
@@ -879,7 +882,12 @@ with mode_tab2:
         <div class="kv-row"><span class="kv-label">支撐區</span><span class="kv-value-down">{r["support_lo"]:.2f} ~ {r["support_hi"]:.2f}</span></div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown(f'<div class="conclusion-box"><div class="conclusion-title">⭐ 整體結論</div><div class="conclusion-text">{generate_overall_conclusion(r)}</div></div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="conclusion-box">
+        <div class="conclusion-title">⭐ 整體結論</div>
+        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 18px;">{generate_overall_conclusion(r)}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # --------------------------------------------
@@ -1046,11 +1054,11 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- 底部結論區 ---
+    # --- 底部結論區 (動態放大變色) ---
     st.markdown(f"""
-    <div class="conclusion-box">
-        <div class="conclusion-title">整體結論</div>
-        <div class="conclusion-text">{generate_overall_conclusion(r)}</div>
+    <div class="conclusion-box" style="padding: 18px 24px;">
+        <div class="conclusion-title" style="font-size: 16px;">整體結論</div>
+        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 22px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
 
