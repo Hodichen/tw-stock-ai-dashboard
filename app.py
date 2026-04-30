@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # ============================================
-# CSS（米白底 + 深藍/米白卡片）
+# CSS（米白底 + 深藍/米白卡片 + 高光重點色）
 # ============================================
 st.markdown("""
 <style>
@@ -191,17 +191,27 @@ header[data-testid="stHeader"] { background: #F5F1EB !important; }
 .kv-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     padding: 4px 0;
     border-bottom: 1px dashed #E5DDD0;
     font-size: 13px;
+    min-height: 28px;
 }
 .kv-row:last-child { border-bottom: none; }
 .kv-label { color: #8B7E72; }
+
+/* 數值基礎樣式 */
 .kv-value { color: #3D3833; font-weight: 600; }
 .kv-value-up { color: #C76A6A; font-weight: 700; }
 .kv-value-down { color: #7B9E89; font-weight: 700; }
 .kv-value-yellow { color: #B89243; font-weight: 700; }
 .kv-value-cyan { color: #5A87A0; font-weight: 700; }
+
+/* --- 🔥 新增：動態放大的 Highlight 樣式 --- */
+.val-highlight-up { color: #C76A6A !important; font-size: 18px !important; font-weight: 800 !important; }
+.val-highlight-down { color: #7B9E89 !important; font-size: 18px !important; font-weight: 800 !important; }
+.val-highlight-neutral { color: #B89243 !important; font-size: 18px !important; font-weight: 800 !important; }
+
 
 .bullet-item {
     color: #4A4540;
@@ -312,7 +322,7 @@ gemini_keys = get_gemini_keys()
 
 
 # ============================================
-# 技術指標
+# 技術指標與 Highlight 輔助函數
 # ============================================
 def sma(s, n): return s.rolling(n, min_periods=1).mean()
 
@@ -341,6 +351,34 @@ def safe(s, i=-1):
         return float(v) if pd.notna(v) else None
     except:
         return None
+
+def get_highlight_cls(val_type, val):
+    """根據數值與類別，回傳專用的放大 Highlight class"""
+    if val_type == 'num':
+        if val > 0: return "val-highlight-up"
+        elif val < 0: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    elif val_type == 'trend' or val_type == 'ma':
+        if "多頭" in val or "多週期" in val: return "val-highlight-up"
+        elif "空頭" in val: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    elif val_type == 'macd':
+        if "多頭擴張" in val or "空頭縮減" in val: return "val-highlight-up"
+        elif "空頭擴張" in val or "多頭縮減" in val: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    elif val_type == 'vol':
+        if "放大" in val: return "val-highlight-up"
+        elif "縮減" in val or "量縮" in val: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    elif val_type == 'pv':
+        if "齊揚" in val: return "val-highlight-up"
+        elif "跌" in val: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    elif val_type == 'kd':
+        if "高檔" in val or "偏多" in val or "黃金" in val: return "val-highlight-up"
+        elif "低檔" in val or "偏空" in val or "死亡" in val: return "val-highlight-down"
+        else: return "val-highlight-neutral"
+    return "kv-value"
 
 
 # ============================================
@@ -696,24 +734,37 @@ def plot_inst(pivot, df):
     return fig
 
 def plot_morandi_gauge(score):
-    """產出儀表板的測速儀圖表"""
+    """產出帶有真實指針箭頭的儀表板"""
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = score,
-        number = {'font': {'size': 32, 'color': '#3D3833'}},
+        number = {'font': {'size': 36, 'color': '#3D3833'}},
         gauge = {
-            'axis': {'range': [None, 100], 'visible': False},
-            'bar': {'color': "#5C5048", 'thickness': 0.15},
+            'axis': {'range': [0, 100], 'visible': False},
+            'bar': {'color': "rgba(0,0,0,0)"}, # 隱藏預設填滿，改用箭頭指針
             'steps': [
                 {'range': [0, 40], 'color': "#DBE8E0"},  # 綠色 (偏弱)
-                {'range': [40, 70], 'color': "#F5EFD9"}, # 黃色 (中性)
-                {'range': [70, 100], 'color': "#F5DCDC"} # 紅色 (偏多)
+                {'range': [40, 60], 'color': "#F5EFD9"}, # 黃色 (中性)
+                {'range': [60, 100], 'color': "#F5DCDC"} # 紅色 (偏多)
             ],
         }
     ))
+    
+    # 透過 Annotation 演算法畫出指針箭頭
+    theta = (1 - score / 100) * np.pi
+    r_needle = 0.38 # 箭頭長度
+    x_head = 0.5 + r_needle * np.cos(theta)
+    y_head = 0.25 + r_needle * np.sin(theta)
+    
+    fig.add_annotation(
+        ax=0.5, ay=0.25, axref='paper', ayref='paper',
+        x=x_head, y=y_head, xref='paper', yref='paper',
+        showarrow=True, arrowhead=2, arrowsize=1.2, arrowwidth=4, arrowcolor='#5C5048'
+    )
+
     fig.update_layout(
         height=180, 
-        margin=dict(l=15, r=15, t=10, b=0), 
+        margin=dict(l=15, r=15, t=10, b=10), 
         paper_bgcolor="rgba(0,0,0,0)", 
         font=dict(family="Arial, 'Noto Sans TC'")
     )
@@ -832,7 +883,7 @@ with mode_tab1:
 
 
 # --------------------------------------------
-# 模式 2：7 大重點速覽
+# 模式 2：7 大重點速覽 (套用 Highlight)
 # --------------------------------------------
 with mode_tab2:
     chg_arrow_top = "▲" if r["chg"] >= 0 else "▼"
@@ -849,21 +900,27 @@ with mode_tab2:
     </div>
     """, unsafe_allow_html=True)
 
+    # 取得 highlight classes
+    cls_chg = get_highlight_cls('num', r["chg"])
+    cls_trend = get_highlight_cls('trend', r["trend"])
+    cls_macd = get_highlight_cls('macd', r["macd_status"])
+    cls_itot = get_highlight_cls('num', r["itot"])
+
     row1c1, row1c2, row1c3 = st.columns(3)
     with row1c1:
         st.markdown(f"""<div class="section-card"><div class="section-title">📈 股價表現</div>
-        <div class="kv-row"><span class="kv-label">收盤</span><span class="kv-value">{r["close"]:.2f}</span></div>
-        <div class="kv-row"><span class="kv-label">漲跌</span><span class="{'kv-value-up' if r['chg'] >= 0 else 'kv-value-down'}">{r["chg"]:+.2f}%</span></div>
+        <div class="kv-row"><span class="kv-label">收盤</span><span class="{cls_chg}">{r["close"]:.2f}</span></div>
+        <div class="kv-row"><span class="kv-label">漲跌</span><span class="{cls_chg}">{r["chg"]:+.2f}%</span></div>
         </div>""", unsafe_allow_html=True)
     with row1c2:
         st.markdown(f"""<div class="section-card"><div class="section-title">📊 趨勢與均線</div>
-        <div class="kv-row"><span class="kv-label">趨勢方向</span><span class="{'kv-value-up' if r['trend'] == '多頭' else 'kv-value-down' if r['trend'] == '空頭' else 'kv-value-yellow'}">{r["trend"]}</span></div>
+        <div class="kv-row"><span class="kv-label">趨勢方向</span><span class="{cls_trend}">{r["trend"]}</span></div>
         </div>""", unsafe_allow_html=True)
     with row1c3:
         rsi_disp_tab2 = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
         st.markdown(f"""<div class="section-card"><div class="section-title">💹 技術指標</div>
         <div class="kv-row"><span class="kv-label">RSI(14)</span><span class="kv-value">{rsi_disp_tab2}</span></div>
-        <div class="kv-row"><span class="kv-label">MACD 狀態</span><span class="kv-value">{r["macd_status"]}</span></div>
+        <div class="kv-row"><span class="kv-label">MACD 狀態</span><span class="{cls_macd}">{r["macd_status"]}</span></div>
         </div>""", unsafe_allow_html=True)
 
     row2c1, row2c2, row2c3 = st.columns(3)
@@ -874,7 +931,7 @@ with mode_tab2:
         </div>""", unsafe_allow_html=True)
     with row2c2:
         st.markdown(f"""<div class="section-card"><div class="section-title">👥 籌碼分析</div>
-        <div class="kv-row"><span class="kv-label">法人合計</span><span class="{'kv-value-up' if r['itot'] > 0 else 'kv-value-down' if r['itot'] < 0 else 'kv-value'}">{r["itot"]:+,} 張</span></div>
+        <div class="kv-row"><span class="kv-label">法人合計</span><span class="{cls_itot}">{r["itot"]:+,} 張</span></div>
         </div>""", unsafe_allow_html=True)
     with row2c3:
         st.markdown(f"""<div class="section-card"><div class="section-title">🎯 關鍵價位</div>
@@ -885,13 +942,13 @@ with mode_tab2:
     st.markdown(f"""
     <div class="conclusion-box">
         <div class="conclusion-title">⭐ 整體結論</div>
-        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 18px;">{generate_overall_conclusion(r)}</div>
+        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 18px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
 
 
 # --------------------------------------------
-# 模式 3：🖥️ 旗艦全景儀表板 (致敬專業看盤軟體)
+# 模式 3：🖥️ 旗艦全景儀表板 (套用 Highlight)
 # --------------------------------------------
 with mode_tab3:
     # --- 頂端資訊條 ---
@@ -920,47 +977,76 @@ with mode_tab3:
         # 右上：總覽與概況 (2欄)
         r1_c1, r1_c2 = st.columns(2)
         with r1_c1:
-            # 預處理變數，避免 f-string 衝突
-            trend_val = f"<span class='{'kv-value-up' if r['trend']=='多頭' else 'kv-value-down' if r['trend']=='空頭' else 'kv-value-yellow'}'>{r['trend']}</span>"
-            kd_str = "高檔鈍化" if (r['k'] and r['k']>80) else "低檔鈍化" if (r['k'] and r['k']<20) else "中性區間"
-            macd_str = r['macd_status']
-            vol_str = r['vol_status']
-            pv_str = "價量齊揚" if (r['chg']>0 and r['vr'] and r['vr']>1) else "價跌量縮" if (r['chg']<0 and r['vr'] and r['vr']<1) else "中性"
+            # 預先計算並套用 Highlight CSS 類別
+            trend_val = f"<span class='{get_highlight_cls('trend', r['trend'])}'>{r['trend']}</span>"
+            
+            # 計算均線排列狀態
+            if r['ma5'] and r['ma20'] and r['ma60']:
+                if r['ma5'] > r['ma20'] > r['ma60']: ma_str = "多週期排列"
+                elif r['ma5'] < r['ma20'] < r['ma60']: ma_str = "空頭排列"
+                else: ma_str = "均線糾結"
+            else: ma_str = "資料不足"
+            ma_val = f"<span class='{get_highlight_cls('ma', ma_str)}'>{ma_str}</span>"
+            
+            # 計算 KD 狀態
+            if r['k'] and r['d']:
+                if r['k'] > 80 and r['d'] > 80: kd_str = "高檔鈍化"
+                elif r['k'] < 20 and r['d'] < 20: kd_str = "低檔鈍化"
+                elif r['k'] > r['d']: kd_str = "偏多交叉"
+                else: kd_str = "偏空交叉"
+            else: kd_str = "中立"
+            kd_val = f"<span class='{get_highlight_cls('kd', kd_str)}'>{kd_str}</span>"
+            
+            macd_val = f"<span class='{get_highlight_cls('macd', r['macd_status'])}'>{r['macd_status']}</span>"
+            vol_val = f"<span class='{get_highlight_cls('vol', r['vol_status'])}'>{r['vol_status']}</span>"
+            
+            # 計算量價關係
+            if r['chg'] > 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價量齊揚"
+            elif r['chg'] < 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價跌量增"
+            elif r['chg'] < 0 and r['vr'] and r['vr'] < 0.8: pv_str = "價跌量縮"
+            elif r['chg'] > 0 and r['vr'] and r['vr'] < 0.8: pv_str = "價漲量縮"
+            else: pv_str = "無明顯背離"
+            pv_val = f"<span class='{get_highlight_cls('pv', pv_str)}'>{pv_str}</span>"
             
             st.markdown(f"""
             <div class="section-card">
                 <div class="section-title">📊 技術分析總覽</div>
                 <div class="kv-row"><span class="kv-label">↗ 趨勢方向</span>{trend_val}</div>
-                <div class="kv-row"><span class="kv-label">★ MA 狀態</span><span class="kv-value-yellow">多週期排列</span></div>
-                <div class="kv-row"><span class="kv-label">∿ KD 指標</span><span class="kv-value">{kd_str}</span></div>
-                <div class="kv-row"><span class="kv-label">📶 MACD</span><span class="kv-value">{macd_str}</span></div>
-                <div class="kv-row"><span class="kv-label">📦 成交量</span><span class="kv-value">{vol_str}</span></div>
-                <div class="kv-row"><span class="kv-label">⚖ 量價關係</span><span class="kv-value">{pv_str}</span></div>
+                <div class="kv-row"><span class="kv-label">★ MA 狀態</span>{ma_val}</div>
+                <div class="kv-row"><span class="kv-label">∿ KD 指標</span>{kd_val}</div>
+                <div class="kv-row"><span class="kv-label">📶 MACD</span>{macd_val}</div>
+                <div class="kv-row"><span class="kv-label">📦 成交量</span>{vol_val}</div>
+                <div class="kv-row"><span class="kv-label">⚖ 量價關係</span>{pv_val}</div>
             </div>
             """, unsafe_allow_html=True)
             
         with r1_c2:
-            # 營收與概況
-            rev_str = f"{r['yoy']:+.2f}%" if r['has_rev'] else "N/A"
-            rev_cls = "kv-value-up" if (r['has_rev'] and r['yoy']>0) else "kv-value-down"
+            # 營收 Highlight
+            if r['has_rev']:
+                rev_val = f"<span class='{get_highlight_cls('num', r['yoy'])}'>{r['yoy']:+.2f}%</span>"
+            else:
+                rev_val = "N/A"
             
             st.markdown(f"""
             <div class="section-card" style="margin-bottom:10px;">
                 <div class="section-title">🏢 基本概況</div>
                 <div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r['industry']}</span></div>
                 <div class="kv-row"><span class="kv-label">單月營收</span><span class="kv-value">{r['rev']:.2f} 億</span></div>
-                <div class="kv-row"><span class="kv-label">營收年增</span><span class="{rev_cls}">{rev_str}</span></div>
+                <div class="kv-row"><span class="kv-label">營收年增</span>{rev_val}</div>
             </div>
             """, unsafe_allow_html=True)
             
-            # 籌碼分析
-            itot_cls = "kv-value-up" if r['itot']>0 else "kv-value-down" if r['itot']<0 else "kv-value"
+            # 籌碼分析 Highlight
+            ifor_val = f"<span class='{get_highlight_cls('num', r['ifor'])}'>{r['ifor']:+,} 張</span>"
+            itru_val = f"<span class='{get_highlight_cls('num', r['itru'])}'>{r['itru']:+,} 張</span>"
+            itot_val = f"<span class='{get_highlight_cls('num', r['itot'])}'>{r['itot']:+,} 張</span>"
+            
             st.markdown(f"""
             <div class="section-card">
                 <div class="section-title">👥 籌碼分析</div>
-                <div class="kv-row"><span class="kv-label">外資動向</span><span class="{'kv-value-up' if r['ifor']>0 else 'kv-value-down'}">{r["ifor"]:+,} 張</span></div>
-                <div class="kv-row"><span class="kv-label">投信動向</span><span class="{'kv-value-up' if r['itru']>0 else 'kv-value-down'}">{r["itru"]:+,} 張</span></div>
-                <div class="kv-row" style="background:#F5EFD9; padding:4px; border-radius:4px;"><span class="kv-label" style="color:#A88838;font-weight:600;">合計買賣</span><span class="{itot_cls}">{r["itot"]:+,} 張</span></div>
+                <div class="kv-row"><span class="kv-label">外資動向</span>{ifor_val}</div>
+                <div class="kv-row"><span class="kv-label">投信動向</span>{itru_val}</div>
+                <div class="kv-row" style="background:#F5EFD9; padding:4px; border-radius:4px;"><span class="kv-label" style="color:#A88838;font-weight:600;">合計買賣</span>{itot_val}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -981,6 +1067,7 @@ with mode_tab3:
             """, unsafe_allow_html=True)
         with r2_c2:
             st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title" style="margin-bottom:0;">🎯 偏多分數</div>', unsafe_allow_html=True)
+            # 這裡呼叫加了指標箭頭的儀表板
             st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False})
             st.markdown('</div>', unsafe_allow_html=True)
         with r2_c3:
@@ -1058,7 +1145,7 @@ with mode_tab3:
     st.markdown(f"""
     <div class="conclusion-box" style="padding: 18px 24px;">
         <div class="conclusion-title" style="font-size: 16px;">整體結論</div>
-        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 22px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
+        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
 
