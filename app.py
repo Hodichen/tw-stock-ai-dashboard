@@ -12,6 +12,7 @@ from datetime import datetime
 import random
 import time
 import json
+import yfinance as yf
 
 st.set_page_config(
     page_title="台股 AI 分析",
@@ -379,6 +380,30 @@ def get_highlight_cls(val_type, val):
         else: return "val-highlight-neutral"
     return "kv-value"
 
+def get_realtime_quote(stock_id):
+    """
+    獲取 Yahoo Finance 即時報價 (支援上市 .TW 與上櫃 .TWO)
+    """
+    suffixes = ['.TW', '.TWO']
+    for suffix in suffixes:
+        try:
+            ticker = yf.Ticker(f"{stock_id}{suffix}")
+            todays_data = ticker.history(period='1d')
+            if not todays_data.empty:
+                rt_price = float(todays_data['Close'].iloc[-1])
+                rt_vol = int(todays_data['Volume'].iloc[-1] / 1000) # 轉成張數
+                
+                prev_data = ticker.history(period='5d')
+                if len(prev_data) > 1:
+                    prev_close = float(prev_data['Close'].iloc[-2])
+                    rt_chg = ((rt_price - prev_close) / prev_close) * 100
+                else:
+                    rt_chg = 0.0
+                    
+                return rt_price, rt_chg, rt_vol
+        except Exception:
+            continue
+    return None, None, None
 
 # ============================================
 # 主分析
@@ -421,12 +446,30 @@ def analyze(stock_id):
     lat = df.iloc[-1]
     rsi_v, k_v, d_v = safe(df["RSI"]), safe(df["K"]), safe(df["D"])
     ma5_v, ma20_v, ma60_v = safe(df["MA5"]), safe(df["MA20"]), safe(df["MA60"])
-    cl_v, vr_v = safe(df["close"]), safe(df["VRatio"])
+    
+    # 預設使用 FinMind 盤後資料
+    cl_v = safe(df["close"])
+    vr_v = safe(df["VRatio"])
     chg = safe(df["Chg%"]) or 0
+    vol_v = int(lat["volume"] / 1000) if pd.notna(lat["volume"]) else 0
+
     macd_v = safe(df["MACD"])
     macd_sig_v = safe(df["MACD_sig"])
     macd_hist_v = safe(df["MACD_hist"])
     macd_hist_prev = safe(df["MACD_hist"], -2)
+
+    # === 即時報價覆蓋邏輯 ===
+    rt_price, rt_chg, rt_vol = get_realtime_quote(stock_id)
+    if rt_price is not None:
+        cl_v = rt_price  # 覆寫即時股價
+        chg = rt_chg     # 覆寫即時漲跌幅
+        if rt_vol is not None and rt_vol > 0:
+            vol_v = rt_vol # 覆寫即時成交量
+            # 重新計算即時量比
+            vma5_v = safe(df["VMA5"])
+            if vma5_v and vma5_v > 0:
+                vr_v = (rt_vol * 1000) / vma5_v
+    # ========================
 
     # 法人
     i_start = (df["date"].max() - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
@@ -529,8 +572,6 @@ def analyze(stock_id):
         macd_status = "N/A"
 
     # 量能變化
-    vma5_v = safe(df["VMA5"])
-    vma20_v = safe(df["VMA20"])
     if vr_v:
         if vr_v > 1.5: vol_status = "放大"
         elif vr_v < 0.7: vol_status = "量縮"
@@ -565,8 +606,9 @@ def analyze(stock_id):
     return {
         "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev, "industry": industry_category,
         "df": df, "pivot": pivot,
-        "close": float(lat["close"]), "chg": chg,
-        "vol": int(lat["volume"] / 1000),
+        "close": float(cl_v) if cl_v is not None else float(lat["close"]),
+        "chg": chg,
+        "vol": vol_v,
         "rsi": rsi_v, "k": k_v, "d": d_v,
         "ma5": ma5_v, "ma20": ma20_v, "ma60": ma60_v,
         "macd": macd_v, "macd_sig": macd_sig_v, "macd_hist": macd_hist_v,
@@ -1154,5 +1196,5 @@ with mode_tab3:
 
 
 st.divider()
-st.caption(f"📊 資料來源：FinMind · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption(f"📊 資料來源：FinMind & Yahoo Finance · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.caption("⚠️ 本網站僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。")
