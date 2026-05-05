@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + HTML 列印報告 + AI 紙雕圖卡 + 雙引擎備援）
+台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + HTML 列印報告 + 雙引擎備援）
 """
 import streamlit as st
 import streamlit.components.v1 as components
@@ -15,8 +15,6 @@ import time
 import json
 import yfinance as yf
 import html as html_lib
-import requests
-import base64
 
 st.set_page_config(
     page_title="台股 AI 分析",
@@ -389,7 +387,7 @@ def generate_overall_conclusion(r):
     return "，".join(parts) + "。"
 
 # ============================================
-# Gemini API
+# Gemini API (包含 503 防護與友善提示)
 # ============================================
 def call_gemini_with_retry(prompt, use_search=False, max_retries=3):
     if not gemini_keys: return "⚠️ 未設定 Gemini API Key"
@@ -398,12 +396,21 @@ def call_gemini_with_retry(prompt, use_search=False, max_retries=3):
         if not client: continue
         try:
             from google.genai import types
-            if use_search: return client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])).text
-            else: return client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
+            if use_search: 
+                return client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])).text
+            else: 
+                return client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
         except Exception as e:
-            if attempt < max_retries - 1: time.sleep(2)
-            else: return f"❌ AI 服務繁忙：{str(e)[:200]}"
-    return "❌ 發生錯誤"
+            if attempt < max_retries - 1: 
+                time.sleep(2) # 失敗的話等待 2 秒再重試
+            else: 
+                # 攔截錯誤並轉換為友善提示
+                error_msg = str(e).lower()
+                if "503" in error_msg or "unavailable" in error_msg or "high demand" in error_msg:
+                    return "⏳ **AI 伺服器目前線路滿載**\n\nGoogle Gemini AI 目前正處於全球使用高峰期，暫時無法回應。這通常是短暫的現象，請稍等 1~2 分鐘後再重新點擊產生！"
+                else:
+                    return f"❌ AI 服務暫時無法使用，請稍後再試（系統代碼：{str(e)[:50]}...）"
+    return "❌ 發生未知的 API 錯誤"
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
@@ -436,54 +443,6 @@ def get_news(stock_name, stock_id):
 請使用繁體中文，並按時間排序（最新的在最前面）。
 """
     return call_gemini_with_retry(prompt, use_search=True)
-
-# ============================================
-# 🎨 影像生成 API (Imagen 3)
-# ============================================
-def generate_paper_craft_image(stock_name, stock_id, trend, close_price, chg, api_key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key={api_key}"
-    
-    prompt = f"""
-    Create a highly refined 9:16 vertical infographic presentation slide for a stock market report about "{stock_name}" (Stock ID: {stock_id}).
-    Key metrics to display: Price {close_price}, Trend: {trend}. Please use Traditional Chinese text if possible.
-
-    ## VISUAL STYLE: Paper Craft / Layered / Shadow
-    ### Color Palette
-    - Background: Pastel Colored Construction Paper
-    - Primary text: Letters looking like paper cutouts
-    - Accent color: Complementary color construction paper
-
-    ### Typography
-    - Headings: Cutout letters, or Bold Round Font.
-    - Body text: Handwritten Style, or Approachable Sans-serif.
-    - Structure: A clear hierarchy between headline and body text
-
-    ### Illustration Style
-    - Paper Overlapping with Physical Shadow, Paper Cutout, Collage
-    - Scissor-cut edges, Layers
-    - Roughness of construction paper, Slight thickness
-    - Visualize only motifs that belong to the input theme (e.g., upward arrows, stock charts, or subtle financial symbols)
-
-    ### Tone & Voice
-    - Warm, Crafty, Fairy-tale, Dimensional
-    - Give the page a composed and refined presence
-    """
-    
-    payload = {
-        "instances": [{"prompt": prompt}],
-        "parameters": {"sampleCount": 1, "aspectRatio": "9:16"}
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        data = response.json()
-        if "predictions" in data and len(data["predictions"]) > 0:
-            b64_img = data["predictions"][0]["bytesBase64Encoded"]
-            return base64.b64decode(b64_img), None
-        else:
-            return None, f"API Error: {data}"
-    except Exception as e:
-        return None, str(e)
 
 # ============================================
 # 圖表
@@ -661,11 +620,15 @@ def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
   .chart-container {{ background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #D4CABB; margin-bottom: 20px; width: 100%; overflow: hidden; }}
   .hint {{ color: #8B7E72; font-style: italic; font-size: 13px; }}
   .footer {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid #D4CABB; color: #8B7E72; font-size: 12px; text-align: center; }}
+  /* === 列印專用樣式 === */
   @media print {{
     body {{ background: #fff; padding: 12mm; max-width: 100%; }}
     .toolbar, .no-print {{ display: none !important; }}
-    h2 {{ page-break-after: avoid; }}
-    .conclusion, .price-row, .grid-3, .grid-4, .chart-container {{ page-break-inside: avoid; }}
+    h2, h3 {{ page-break-after: avoid; break-after: avoid; }}
+    .conclusion, .price-row, .grid-2, .grid-3, .grid-4, .chart-container, .cell {{ 
+        page-break-inside: avoid; 
+        break-inside: avoid; 
+    }}
   }}
 </style>
 </head>
@@ -822,35 +785,6 @@ with c_exp2:
 with c_exp3:
     if st.button("📋 產生純文字摘要", use_container_width=True):
         st.code(share_text, language="text")
-
-# 🎨 獨立區域：AI 視覺化圖卡
-st.markdown("#### 🎨 AI 視覺化圖卡 (9:16 手機版紙雕風格)")
-c_img_btn, c_img_show = st.columns([1, 3])
-with c_img_btn:
-    if st.button("🖼️ 產生紙雕風格圖卡", use_container_width=True):
-        if not gemini_keys:
-            st.error("⚠️ 未設定 Gemini API Key")
-        else:
-            with st.spinner("🎨 AI 畫家正在為您剪紙、拼貼中... (約需 10~15 秒)"):
-                api_key = random.choice(gemini_keys)
-                img_bytes, img_err = generate_paper_craft_image(r["name"], r["id"], r["trend"], r["close"], r["chg"], api_key)
-                if img_bytes:
-                    st.session_state[f'paper_img_{sid}'] = img_bytes
-                    st.success("✅ 圖卡產生完畢！")
-                else:
-                    st.error(f"❌ 產生失敗：{img_err}")
-    st.caption("註：因圖像生成模型的限制，圖中的中文字體可能會發生變形或錯位，請將其視為背景的風格點綴。")
-
-with c_img_show:
-    if f'paper_img_{sid}' in st.session_state:
-        st.image(st.session_state[f'paper_img_{sid}'], width=300)
-        st.download_button(
-            label="⬇️ 下載 9:16 圖卡",
-            data=st.session_state[f'paper_img_{sid}'],
-            file_name=f"{r['name']}({sid})_紙雕風格圖卡_{today_str}.jpg",
-            mime="image/jpeg",
-            use_container_width=False
-        )
 
 # 顯示報告預覽
 if f'html_report_{sid}' in st.session_state:
@@ -1214,5 +1148,5 @@ with mode_tab3:
     st.markdown(f'<div class="conclusion-box"><div class="conclusion-title">⭐ 整體結論</div><div class="conclusion-text" style="color: {conclusion_color};">{generate_overall_conclusion(r)}</div></div>', unsafe_allow_html=True)
 
 st.divider()
-st.caption(f"📊 資料來源：FinMind / Yahoo Finance · 🤖 AI：Google Gemini 2.5 Flash / Imagen 3 · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption(f"📊 資料來源：FinMind / Yahoo Finance · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.caption("⚠️ 本網站僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。")
