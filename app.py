@@ -183,9 +183,13 @@ def analyze(stock_id):
     start = (pd.Timestamp.today() - pd.Timedelta(days=200)).strftime("%Y-%m-%d")
     is_etf = stock_id.startswith("00") and len(stock_id) >= 5
 
-    df = dl.taiwan_stock_daily(stock_id=stock_id, start_date=start, end_date=end)
-    if df.empty:
-        return None, "找不到此股票，請確認代號"
+    try:
+        df = dl.taiwan_stock_daily(stock_id=stock_id, start_date=start, end_date=end)
+    except Exception as e:
+        return None, f"獲取股價資料失敗，FinMind API 伺服器異常或無回應，請稍後再試。"
+
+    if df is None or df.empty:
+        return None, "找不到此股票，或近期無交易資料，請確認代號"
 
     df = df.rename(columns={"max": "high", "min": "low", "Trading_Volume": "volume"})
     df["date"] = pd.to_datetime(df["date"])
