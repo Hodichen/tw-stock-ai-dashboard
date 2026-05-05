@@ -809,10 +809,12 @@ with c_exp1:
             st.success("✅ 報告產生完畢！")
 
     if f'html_report_{sid}' in st.session_state:
+        # 修正重點 2：動態取得當天日期並組合下載檔名
+        today_str = datetime.now().strftime("%Y%m%d")
         st.download_button(
             label="⬇️ 下載 HTML 報告",
             data=st.session_state[f'html_report_{sid}'].encode("utf-8"),
-            file_name=f"{sid}_{r['name']}_AI分析報告.html",
+            file_name=f"{r['name']}({sid})_完整AI解析_{today_str}.html",
             mime="text/html",
             use_container_width=True,
             help="下載後雙擊開啟，按 Ctrl+P 即可存成 PDF"
@@ -855,7 +857,6 @@ with mode_tab1:
 
     t1, t2, t3, t4, t5 = st.tabs(["📈 技術面", "💼 籌碼面", "📊 基本面", "🤖 AI 智能解讀", "📰 即時新聞"])
     
-    # 修正重點 1：加入獨立的 key
     with t1: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"]), use_container_width=True, key="kline_tab1")
     with t2:
         cc = st.columns(4)
@@ -863,7 +864,6 @@ with mode_tab1:
         cc[1].markdown(render_inst_card("投信", r["itru"]), unsafe_allow_html=True)
         cc[2].markdown(render_inst_card("自營商", r["idal"]), unsafe_allow_html=True)
         cc[3].markdown(render_inst_card("合計", r["itot"]), unsafe_allow_html=True)
-        # 修正重點 1：加入獨立的 key
         if not r["pivot"].empty: st.plotly_chart(plot_inst(r["pivot"], r["df"]), use_container_width=True, key="inst_tab1")
     with t3:
         if r["has_rev"]:
@@ -1089,7 +1089,6 @@ with mode_tab3:
     top_left, top_right = st.columns([6, 4])
 
     with top_left:
-        # 修正重點 1：加入獨立的 key
         st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=620), use_container_width=True, key="kline_tab3")
 
     with top_right:
@@ -1138,20 +1137,20 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-        # 區塊 2：基本概況
+        # 修正重點 1：將多行字串改為單行拼接，消除前方縮排引起的 Markdown 渲染錯誤
         if r['has_rev']:
             yoy_cls = "kv-value-up" if r['yoy'] > 0 else "kv-value-down"
-            rev_block = f"""
-            <div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r['industry']}</span></div>
-            <div class="kv-row"><span class="kv-label">單月營收</span><span class="kv-value">{r['rev']:.2f} 億</span></div>
-            <div class="kv-row"><span class="kv-label">營收年增</span><span class="{yoy_cls}">{r['yoy']:+.2f}%</span></div>
-            """
+            rev_block = (
+                f'<div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r["industry"]}</span></div>'
+                f'<div class="kv-row"><span class="kv-label">單月營收</span><span class="kv-value">{r["rev"]:.2f} 億</span></div>'
+                f'<div class="kv-row"><span class="kv-label">營收年增</span><span class="{yoy_cls}">{r["yoy"]:+.2f}%</span></div>'
+            )
         else:
-            rev_block = f"""
-            <div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r['industry']}</span></div>
-            <div class="kv-row"><span class="kv-label">類型</span><span class="kv-value-yellow">ETF / 興櫃</span></div>
-            <div class="kv-row"><span class="kv-label">營收資料</span><span class="kv-value">無</span></div>
-            """
+            rev_block = (
+                f'<div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r["industry"]}</span></div>'
+                '<div class="kv-row"><span class="kv-label">類型</span><span class="kv-value-yellow">ETF / 興櫃</span></div>'
+                '<div class="kv-row"><span class="kv-label">營收資料</span><span class="kv-value">無</span></div>'
+            )
 
         st.markdown(f"""
         <div class="section-card">
@@ -1198,7 +1197,6 @@ with mode_tab3:
 
     with bot_c2:
         st.markdown('<div class="section-card" style="padding:8px;"><div class="section-title">🎯 偏多分數</div>', unsafe_allow_html=True)
-        # 修正重點 1：加入獨立的 key
         st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False}, key="gauge_tab3")
         st.markdown('</div>', unsafe_allow_html=True)
 
