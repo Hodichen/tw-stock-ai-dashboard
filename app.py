@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + A4 完整 PDF 導出與分享）- 解決亂碼版
+台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + HTML 列印報告）
 """
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -13,18 +14,7 @@ import random
 import time
 import json
 import yfinance as yf
-import io
-import os
-import urllib.request
-import re
-
-# PDF 相關套件
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+import html as html_lib
 
 st.set_page_config(
     page_title="台股 AI 分析",
@@ -34,7 +24,7 @@ st.set_page_config(
 )
 
 # ============================================
-# CSS（米白底 + 深藍/米白卡片 + 高光重點色修正版）
+# CSS（米白底 + 莫蘭迪色 + 卡片）
 # ============================================
 st.markdown("""
 <style>
@@ -83,17 +73,8 @@ span.kv-value-down { color: #7B9E89 !important; font-weight: 700 !important; }
 span.kv-value-yellow { color: #B89243 !important; font-weight: 700 !important; }
 span.kv-value-cyan { color: #5A87A0 !important; font-weight: 700 !important; }
 
-span.val-highlight-up { color: #C76A6A !important; font-size: 18px !important; font-weight: 800 !important; }
-span.val-highlight-down { color: #7B9E89 !important; font-size: 18px !important; font-weight: 800 !important; }
-span.val-highlight-neutral { color: #B89243 !important; font-size: 18px !important; font-weight: 800 !important; }
-
-.bullet-item { color: #4A4540; font-size: 13px; padding: 4px 0 4px 16px; position: relative; line-height: 1.6; }
-.bullet-item::before { content: "●"; color: #B89243; position: absolute; left: 0; font-size: 9px; top: 7px; }
-
 .conclusion-box { background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%); border: 2px solid #C9B689; border-radius: 8px; padding: 14px 20px; margin: 10px 0; display: flex; align-items: center; }
 .conclusion-title { color: #FAF6F0; background: #8B6F47; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; margin-right: 16px; white-space: nowrap; }
-.scenario-box { border: 1px solid #D4CABB; border-radius: 6px; padding: 8px; text-align: center; background: #FFFFFF; }
-.scenario-title { font-weight: 700; padding: 4px 0; border-radius: 4px; margin-bottom: 6px; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,7 +126,7 @@ gemini_keys = get_gemini_keys()
 
 
 # ============================================
-# 技術指標與 Highlight 輔助函數
+# 技術指標
 # ============================================
 def sma(s, n): return s.rolling(n, min_periods=1).mean()
 def rsi_calc(s, n=14):
@@ -173,33 +154,21 @@ def safe(s, i=-1):
 
 def get_highlight_cls(val_type, val):
     if val_type == 'num':
-        if val > 0: return "val-highlight-up"
-        elif val < 0: return "val-highlight-down"
-        else: return "val-highlight-neutral"
+        if val > 0: return "kv-value-up"
+        elif val < 0: return "kv-value-down"
+        else: return "kv-value-yellow"
     elif val_type == 'trend' or val_type == 'ma':
-        if "多頭" in val or "多週期" in val: return "val-highlight-up"
-        elif "空頭" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
+        if "多頭" in val or "多週期" in val: return "kv-value-up"
+        elif "空頭" in val: return "kv-value-down"
+        else: return "kv-value-yellow"
     elif val_type == 'macd':
-        if "多頭擴張" in val or "空頭縮減" in val: return "val-highlight-up"
-        elif "空頭擴張" in val or "多頭縮減" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
+        if "多頭擴張" in val or "空頭縮減" in val: return "kv-value-up"
+        elif "空頭擴張" in val or "多頭縮減" in val: return "kv-value-down"
+        else: return "kv-value-yellow"
     elif val_type == 'vol':
-        if "放大" in val: return "val-highlight-up"
-        elif "縮減" in val or "量縮" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
-    elif val_type == 'pv':
-        if "齊揚" in val: return "val-highlight-up"
-        elif "跌" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
-    elif val_type == 'kd':
-        if "高檔" in val or "偏多" in val or "黃金" in val: return "val-highlight-up"
-        elif "低檔" in val or "偏空" in val or "死亡" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
-    elif val_type == 'bb':
-        if "上軌" in val or "之上" in val: return "val-highlight-up"
-        elif "下軌" in val or "之下" in val: return "val-highlight-down"
-        else: return "val-highlight-neutral"
+        if "放大" in val: return "kv-value-up"
+        elif "縮減" in val or "量縮" in val: return "kv-value-down"
+        else: return "kv-value-yellow"
     return "kv-value"
 
 
@@ -247,20 +216,13 @@ def analyze(stock_id):
     lat = df.iloc[-1]
     rsi_v, k_v, d_v = safe(df["RSI"]), safe(df["K"]), safe(df["D"])
     ma5_v, ma20_v, ma60_v = safe(df["MA5"]), safe(df["MA20"]), safe(df["MA60"])
-    bb_ub_v, bb_lb_v = safe(df["BB_UB"]), safe(df["BB_LB"])
     cl_v, vr_v = safe(df["close"]), safe(df["VRatio"])
     chg = safe(df["Chg%"]) or 0
     macd_v = safe(df["MACD"])
     macd_sig_v = safe(df["MACD_sig"])
     macd_hist_v = safe(df["MACD_hist"])
     macd_hist_prev = safe(df["MACD_hist"], -2)
-
-    bb_status = "中性整理"
-    if cl_v and bb_ub_v and bb_lb_v and ma20_v:
-        if cl_v >= bb_ub_v: bb_status = "突破上軌"
-        elif cl_v <= bb_lb_v: bb_status = "跌破下軌"
-        elif cl_v > ma20_v: bb_status = "中軌之上"
-        else: bb_status = "中軌之下"
+    vma5_v = safe(df["VMA5"])
 
     i_start = (df["date"].max() - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
     pivot = pd.DataFrame()
@@ -342,7 +304,7 @@ def analyze(stock_id):
     resist_lo, resist_hi = round(high_30, 2), round(high_recent, 2)
     support_lo = round(ma20_v * 0.97, 2) if ma20_v else round(cl_v * 0.95, 2)
     support_hi = round(ma20_v, 2) if ma20_v else round(cl_v * 0.97, 2)
-    
+
     score = 50
     if trend == "多頭": score += 15
     elif trend == "空頭": score -= 15
@@ -356,6 +318,7 @@ def analyze(stock_id):
     score = max(0, min(100, score))
 
     # 即時報價覆寫
+    vol_v = int(lat["volume"] / 1000)
     suffixes = ['.TW', '.TWO']
     for suffix in suffixes:
         try:
@@ -372,15 +335,12 @@ def analyze(stock_id):
                     if vma5_v and vma5_v > 0: vr_v = (rt_vol * 1000) / vma5_v
                 break
         except: continue
-        
-    vol_v = vol_v if 'vol_v' in locals() else int(lat["volume"] / 1000)
 
     return {
         "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev, "industry": industry_category,
         "df": df, "pivot": pivot,
         "close": float(cl_v), "chg": chg, "vol": vol_v,
         "rsi": rsi_v, "k": k_v, "d": d_v, "ma5": ma5_v, "ma20": ma20_v, "ma60": ma60_v,
-        "bb_ub": bb_ub_v, "bb_lb": bb_lb_v, "bb_status": bb_status,
         "macd": macd_v, "macd_sig": macd_sig_v, "macd_hist": macd_hist_v, "macd_status": macd_status,
         "vr": vr_v, "vol_status": vol_status, "trend": trend,
         "ifor": ifor, "itru": itru, "idal": idal, "itot": itot,
@@ -388,6 +348,7 @@ def analyze(stock_id):
         "status": status, "alerts": alerts, "score": score,
         "resist_lo": resist_lo, "resist_hi": resist_hi, "support_lo": support_lo, "support_hi": support_hi,
     }, None
+
 
 def generate_overall_conclusion(r):
     parts = [f"{r['name']}（{r['id']}）"]
@@ -402,6 +363,7 @@ def generate_overall_conclusion(r):
     elif r["trend"] == "空頭": parts.append("反彈仍偏空")
     else: parts.append("等待方向明確")
     return "，".join(parts) + "。"
+
 
 # ============================================
 # Gemini API
@@ -422,118 +384,39 @@ def call_gemini_with_retry(prompt, use_search=False, max_retries=3):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
-    prompt = f"你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。\n【當前數據】\n{data_summary}\n【請依以下結構產出分析報告（繁體中文）】\n## 📈 技術面解讀\n## 💼 籌碼面解讀\n## 💡 短線操作建議\n## ⚠️ 風險評估\n請使用繁體中文，保持客觀，提供具體可執行的建議。"
+    prompt = f"""你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。
+【當前數據】
+{data_summary}
+【請依以下結構產出分析報告（繁體中文）】
+## 📈 技術面解讀
+（3-4 句話，分析目前價格動能、均線排列、技術指標訊號）
+## 💼 籌碼面解讀
+（3-4 句話，分析法人動向、買賣超意義）
+## 💡 短線操作建議
+（3-5 條具體建議，含進出場點位概念）
+## ⚠️ 風險評估
+（2-3 條最重要的風險點）
+## 🎯 中長線觀察重點
+（3-4 條中長線投資人需要追蹤的指標或事件）
+請使用繁體中文，保持客觀，提供具體可執行的建議，加上免責聲明結尾。
+"""
     return call_gemini_with_retry(prompt, use_search=False)
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, stock_id):
-    prompt = f"請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，產出 3-5 則最重要的新聞重點。\n每則新聞格式：\n### 📰 [新聞標題]\n- **日期**：YYYY-MM-DD\n- **重點摘要**：...\n請使用繁體中文，按時間排序。"
+    prompt = f"""請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，產出 3-5 則最重要的新聞重點。
+每則新聞請以以下格式呈現：
+### 📰 [新聞標題]
+- **日期**：YYYY-MM-DD
+- **重點摘要**：（2-3 句話）
+- **影響評估**：對股價可能的影響（正面/負面/中性）
+請使用繁體中文，並按時間排序（最新的在最前面）。
+"""
     return call_gemini_with_retry(prompt, use_search=True)
 
 
 # ============================================
-# PDF 產生邏輯 (自動下載字型 + 解決豆腐塊)
-# ============================================
-@st.cache_resource
-def load_chinese_font():
-    """下載並註冊開源中文字型 TaipeiSansTC，絕對解決豆腐塊問題"""
-    font_path = "TaipeiSansTCBeta-Regular.ttf"
-    # 使用絕對穩定的直接下載連結 (台北黑體)
-    font_url = "https://raw.githubusercontent.com/chihyangchen/Taipei-Sans-TC/master/TaipeiSansTCBeta-Regular.ttf"
-    
-    if not os.path.exists(font_path):
-        try:
-            urllib.request.urlretrieve(font_url, font_path)
-        except Exception as e:
-            # 如果還是失敗，退回預設字型但會是亂碼
-            return 'Helvetica'
-            
-    try:
-        pdfmetrics.registerFont(TTFont('TaipeiSansTC', font_path))
-        return 'TaipeiSansTC'
-    except Exception:
-        return 'Helvetica'
-
-def create_full_pdf(r, ai_text, news_text):
-    """產生 A4 完整版包含 AI 解析與新聞的 PDF 報告"""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=40, bottomMargin=40)
-    elements = []
-    
-    font_name = load_chinese_font()
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(name='Title', fontName=font_name, fontSize=22, leading=26, spaceAfter=12, textColor=colors.HexColor('#5C5048'))
-    subtitle_style = ParagraphStyle(name='SubTitle', fontName=font_name, fontSize=12, leading=16, spaceAfter=20, textColor=colors.HexColor('#8B7E72'))
-    h1_style = ParagraphStyle(name='H1', fontName=font_name, fontSize=16, leading=22, spaceAfter=10, textColor=colors.HexColor('#8B6F47'))
-    h2_style = ParagraphStyle(name='H2', fontName=font_name, fontSize=14, leading=20, spaceAfter=8, textColor=colors.HexColor('#3D3833'))
-    normal_style = ParagraphStyle(name='Normal', fontName=font_name, fontSize=11, leading=18, spaceAfter=8, textColor=colors.HexColor('#4A4540'))
-    
-    # --- 標題 ---
-    elements.append(Paragraph(f"📊 台股 AI 深度分析報告：{r['name']} ({r['id']})", title_style))
-    elements.append(Paragraph(f"產業：{r['industry']} | 報告生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", subtitle_style))
-    
-    # --- 關鍵數據 ---
-    data = [
-        ["即時收盤價", f"{r['close']:.2f}", "漲跌幅", f"{r['chg']:+.2f}%"],
-        ["趨勢方向", r['trend'], "偏多分數", f"{r['score']} / 100"],
-        ["成交量(張)", f"{r['vol']:,}", "狀態判定", r['status']],
-        ["RSI(14)", f"{r['rsi']:.1f}" if r['rsi'] else "N/A", "MACD", r['macd_status']],
-        ["壓力區", f"{r['resist_hi']:.2f}", "支撐區", f"{r['support_hi']:.2f}"]
-    ]
-    
-    t = Table(data, colWidths=[100, 130, 100, 130])
-    t.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), font_name),
-        ('FONTSIZE', (0,0), (-1,-1), 11),
-        ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#FAF6F0')),
-        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#FAF6F0')),
-        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#3D3833')),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5DDD0')),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-    ]))
-    elements.append(t)
-    elements.append(Spacer(1, 20))
-    
-    # --- 總結 ---
-    elements.append(Paragraph("⭐ AI 整體結論", h1_style))
-    elements.append(Paragraph(generate_overall_conclusion(r), normal_style))
-    elements.append(Spacer(1, 15))
-    
-    # --- Markdown 轉換器 (避開粗體字型陷阱) ---
-    def parse_markdown_to_platypus(text_content):
-        for line in text_content.split('\n'):
-            line = line.strip()
-            if not line: continue
-            
-            # 重要修正：將 **粗體** 轉換為顏色標示，避免缺少粗體字型導致報錯或亂碼
-            line = re.sub(r'\*\*(.*?)\*\*', r'<font color="#C76A6A">\1</font>', line)
-            
-            if line.startswith('### '): elements.append(Paragraph(line[4:], h2_style))
-            elif line.startswith('## '): elements.append(Paragraph(line[3:], h1_style))
-            elif line.startswith('# '): elements.append(Paragraph(line[2:], h1_style))
-            elif line.startswith('- '): elements.append(Paragraph(f"• {line[2:]}", ParagraphStyle(name='Bullet', parent=normal_style, leftIndent=15)))
-            else: elements.append(Paragraph(line, normal_style))
-    
-    if ai_text:
-        elements.append(Spacer(1, 15))
-        parse_markdown_to_platypus(ai_text)
-        
-    if news_text:
-        elements.append(Spacer(1, 25))
-        elements.append(Paragraph("📰 近期重要新聞", h1_style))
-        parse_markdown_to_platypus(news_text)
-        
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-
-# ============================================
-# 圖表組件
+# 圖表
 # ============================================
 MORANDI = {"bg": "#FAF6F0", "grid": "#E5DDD0", "axis": "#8B7E72", "text": "#5C5048", "up": "#C76A6A", "down": "#7B9E89", "ma5": "#CBA365", "ma20": "#6D98AB", "ma60": "#B0889F", "rsi": "#CBA365", "k": "#6D98AB", "d": "#B0889F", "macd_dif": "#6D98AB", "macd_dea": "#CBA365", "foreign": "#6D98AB", "trust": "#C76A6A", "dealer": "#B0889F", "total": "#7B9E89", "price": "#CBA365"}
 
@@ -543,7 +426,8 @@ def plot_kline(df, name, sid, height=620):
         fig.add_trace(go.Scatter(x=df["date"], y=df["BB_UB"], name="布林上軌", line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(x=df["date"], y=df["BB_LB"], name="布林下軌", line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), fill='tonexty', fillcolor='rgba(139,126,114,0.05)', showlegend=False), row=1, col=1)
     fig.add_trace(go.Candlestick(x=df["date"], open=df["open"], high=df["high"], low=df["low"], close=df["close"], increasing_line_color=MORANDI["up"], decreasing_line_color=MORANDI["down"], increasing_fillcolor=MORANDI["up"], decreasing_fillcolor=MORANDI["down"], name="K"), row=1, col=1)
-    for col, color in [("MA5", MORANDI["ma5"]), ("MA20", MORANDI["ma20"]), ("MA60", MORANDI["ma60"])]: fig.add_trace(go.Scatter(x=df["date"], y=df[col], name=col, line=dict(color=color, width=1.4)), row=1, col=1)
+    for col, color in [("MA5", MORANDI["ma5"]), ("MA20", MORANDI["ma20"]), ("MA60", MORANDI["ma60"])]:
+        fig.add_trace(go.Scatter(x=df["date"], y=df[col], name=col, line=dict(color=color, width=1.4)), row=1, col=1)
     vc = [MORANDI["up"] if c >= o else MORANDI["down"] for c, o in zip(df["close"], df["open"])]
     fig.add_trace(go.Bar(x=df["date"], y=df["volume"], marker_color=vc, name="量", showlegend=False, opacity=0.75), row=2, col=1)
     fig.add_trace(go.Scatter(x=df["date"], y=df["RSI"], name="RSI", line=dict(color=MORANDI["rsi"], width=1.6)), row=3, col=1)
@@ -564,7 +448,8 @@ def plot_inst(pivot, df):
     rec = pivot.head(10).sort_index()
     pr = df[df["date"].isin(pd.to_datetime(rec.index))][["date", "close"]].sort_values("date")
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    for col, color in [("外資", MORANDI["foreign"]), ("投信", MORANDI["trust"]), ("自營商", MORANDI["dealer"]), ("合計", MORANDI["total"])]: fig.add_trace(go.Bar(x=rec.index, y=rec[col], name=col, marker_color=color, opacity=0.85), secondary_y=False)
+    for col, color in [("外資", MORANDI["foreign"]), ("投信", MORANDI["trust"]), ("自營商", MORANDI["dealer"]), ("合計", MORANDI["total"])]:
+        fig.add_trace(go.Bar(x=rec.index, y=rec[col], name=col, marker_color=color, opacity=0.85), secondary_y=False)
     fig.add_trace(go.Scatter(x=pr["date"], y=pr["close"], name="股價", line=dict(color=MORANDI["price"], width=2.5), marker=dict(size=8), mode="lines+markers"), secondary_y=True)
     fig.update_layout(template="plotly_white", barmode="group", height=340, plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"], font=dict(color=MORANDI["text"]), margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
     return fig
@@ -578,9 +463,383 @@ def plot_morandi_gauge(score):
 def render_inst_card(label, value):
     cls, sign = ("inst-value-up", "+") if value > 0 else ("inst-value-down", "") if value < 0 else ("inst-value-flat", "")
     return f'<div class="inst-card"><div class="inst-label">{label}</div><div class="{cls}">{sign}{value:,}</div></div>'
+
 def render_pct_card(label, pct, suffix="%"):
     cls = "inst-value-up" if pct > 0 else "inst-value-down" if pct < 0 else "inst-value-flat"
     return f'<div class="inst-card"><div class="inst-label">{label}</div><div class="{cls}">{pct:+.2f}{suffix}</div></div>'
+
+
+# ============================================
+# 🆕 HTML 列印報告產生器（取代舊 PDF）
+# ============================================
+def md_to_html(text):
+    """非常簡單的 Markdown → HTML 轉換器，支援 # / ## / ### / ** / -"""
+    if not text:
+        return ""
+    lines = text.split("\n")
+    out = []
+    in_list = False
+    for line in lines:
+        line = line.rstrip()
+        if not line:
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append("")
+            continue
+
+        # 處理粗體 **xxx**
+        # 用簡單 regex
+        import re as _re
+        line = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
+
+        # 標題
+        if line.startswith("### "):
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(f"<h3>{html_lib.escape(line[4:])[:].replace('&lt;strong&gt;', '<strong>').replace('&lt;/strong&gt;', '</strong>')}</h3>")
+        elif line.startswith("## "):
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(f"<h2>{line[3:]}</h2>")
+        elif line.startswith("# "):
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(f"<h1>{line[2:]}</h1>")
+        elif line.startswith("- ") or line.startswith("* "):
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f"<li>{line[2:]}</li>")
+        else:
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(f"<p>{line}</p>")
+
+    if in_list:
+        out.append("</ul>")
+    return "\n".join(out)
+
+
+def build_html_report(r, ai_text, news_text):
+    """產生完整 HTML 報告（適合在新分頁開啟，按 Ctrl+P 列印或存 PDF）"""
+    name = r["name"]
+    sid = r["id"]
+    industry = r["industry"]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # 漲跌色（台股慣例）
+    chg_color = "#C76A6A" if r["chg"] >= 0 else "#7B9E89"
+    chg_arrow = "▲" if r["chg"] >= 0 else "▼"
+
+    # 警示燈
+    alerts_html = ""
+    for a in r["alerts"]["red"]:
+        alerts_html += f'<span class="chip chip-red">🔴 {a}</span>'
+    for a in r["alerts"]["yellow"]:
+        alerts_html += f'<span class="chip chip-yellow">🟡 {a}</span>'
+    for a in r["alerts"]["green"]:
+        alerts_html += f'<span class="chip chip-green">🟢 {a}</span>'
+    if not alerts_html:
+        alerts_html = '<span class="chip">⚪ 目前無特殊警示</span>'
+
+    # 法人 4 格
+    def fmt_inst(label, v):
+        cls = "v-up" if v > 0 else "v-down" if v < 0 else "v-flat"
+        sign = "+" if v > 0 else ""
+        return f'<div class="cell"><div class="lbl">{label}</div><div class="val {cls}">{sign}{v:,}</div></div>'
+
+    inst_html = fmt_inst("外資(張)", r["ifor"]) + fmt_inst("投信(張)", r["itru"]) + fmt_inst("自營商(張)", r["idal"]) + fmt_inst("合計(張)", r["itot"])
+
+    # 基本面
+    if r["has_rev"]:
+        rev_html = f"""
+        <div class="grid-3">
+          <div class="cell"><div class="lbl">最新月營收</div><div class="val">{r['rev']:.2f} 億</div></div>
+          <div class="cell"><div class="lbl">YoY 年增率</div><div class="val {'v-up' if r['yoy']>0 else 'v-down'}">{r['yoy']:+.2f}%</div></div>
+          <div class="cell"><div class="lbl">MoM 月增率</div><div class="val {'v-up' if r['mom']>0 else 'v-down'}">{r['mom']:+.2f}%</div></div>
+        </div>
+        """
+    else:
+        rev_html = '<p class="hint">📌 ETF / 興櫃，無月營收資料</p>'
+
+    # 整體結論
+    conclusion = generate_overall_conclusion(r)
+
+    # AI / 新聞
+    ai_html = md_to_html(ai_text) if ai_text else "<p class='hint'>（未產生 AI 解析）</p>"
+    news_html = md_to_html(news_text) if news_text else "<p class='hint'>（未抓取新聞）</p>"
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>{name}（{sid}）AI 分析報告 - {now}</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{
+    font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
+    background: #F5F1EB;
+    color: #4A4540;
+    margin: 0;
+    padding: 30px 40px;
+    line-height: 1.7;
+    max-width: 900px;
+    margin: 0 auto;
+  }}
+
+  .toolbar {{
+    background: #FAF6F0;
+    border: 1px solid #D4CABB;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }}
+  .toolbar-tip {{ color: #8B7E72; font-size: 13px; }}
+  .btn {{
+    background: #8B9D83;
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+  }}
+  .btn:hover {{ background: #6F8169; }}
+
+  .header {{
+    border-bottom: 3px solid #C9B689;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }}
+  .header h1 {{
+    color: #5C5048;
+    margin: 0;
+    font-size: 26px;
+  }}
+  .header .meta {{
+    color: #8B7E72;
+    font-size: 13px;
+    margin-top: 6px;
+  }}
+
+  h2 {{
+    color: #8B6F47;
+    border-left: 4px solid #C9B689;
+    padding-left: 12px;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    font-size: 18px;
+  }}
+  h3 {{
+    color: #5C5048;
+    font-size: 15px;
+    margin-top: 18px;
+    margin-bottom: 8px;
+  }}
+  p {{ margin: 6px 0; }}
+  ul {{ margin: 6px 0 12px 0; padding-left: 22px; }}
+  li {{ margin: 3px 0; }}
+  strong {{ color: #C76A6A; }}
+
+  .price-row {{
+    background: linear-gradient(135deg, #FAF6F0, #F5EFE5);
+    border: 1px solid #D4CABB;
+    border-radius: 10px;
+    padding: 16px 22px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }}
+  .price-num {{
+    font-size: 32px;
+    font-weight: 700;
+    color: #3D3833;
+  }}
+  .price-chg {{
+    font-size: 18px;
+    font-weight: 700;
+    color: {chg_color};
+  }}
+  .price-meta {{
+    color: #8B7E72;
+    font-size: 13px;
+  }}
+
+  .grid-4 {{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }}
+  .grid-3 {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }}
+  .grid-2 {{
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }}
+  .cell {{
+    background: #FAF6F0;
+    border: 1px solid #E5DDD0;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: left;
+  }}
+  .lbl {{ color: #8B7E72; font-size: 12px; margin-bottom: 6px; }}
+  .val {{ font-size: 22px; font-weight: 700; color: #3D3833; }}
+  .v-up {{ color: #C76A6A; }}
+  .v-down {{ color: #7B9E89; }}
+  .v-flat {{ color: #8B7E72; }}
+
+  .chip {{
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 14px;
+    margin: 3px 4px 3px 0;
+    font-size: 13px;
+    background: #F0EDE7;
+    color: #5C5048;
+    border: 1px solid #D4CABB;
+  }}
+  .chip-red {{ background: #FBEDED; color: #C76A6A; border-color: #E5BFBF; }}
+  .chip-yellow {{ background: #FAF1D8; color: #B89243; border-color: #E5D9A8; }}
+  .chip-green {{ background: #EAF1EC; color: #5C8169; border-color: #B8D0BE; }}
+
+  .conclusion {{
+    background: linear-gradient(135deg, #F0E9DA, #E8DFCC);
+    border: 2px solid #C9B689;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 18px 0;
+  }}
+  .conclusion-label {{
+    background: #8B6F47;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    margin-bottom: 8px;
+  }}
+  .conclusion-text {{
+    font-size: 15px;
+    color: #5C5048;
+    font-weight: 500;
+  }}
+
+  .hint {{ color: #8B7E72; font-style: italic; font-size: 13px; }}
+
+  .footer {{
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid #D4CABB;
+    color: #8B7E72;
+    font-size: 12px;
+    text-align: center;
+  }}
+
+  /* === 列印專用樣式（按 Ctrl+P 後生效）=== */
+  @media print {{
+    body {{ background: #fff; padding: 12mm; max-width: 100%; }}
+    .toolbar, .no-print {{ display: none !important; }}
+    h2 {{ page-break-after: avoid; }}
+    .conclusion, .price-row, .grid-3, .grid-4 {{ page-break-inside: avoid; }}
+  }}
+</style>
+</head>
+<body>
+
+  <div class="toolbar no-print">
+    <div class="toolbar-tip">💡 按下右側「列印 / 存 PDF」按鈕，或鍵盤 Ctrl + P（Mac: Cmd + P）即可儲存為 PDF</div>
+    <button class="btn" onclick="window.print()">🖨️ 列印 / 存 PDF</button>
+  </div>
+
+  <div class="header">
+    <h1>📊 {name}（{sid}）AI 分析報告</h1>
+    <div class="meta">產業：{industry} ｜ 報告生成：{now} ｜ 整體狀態：{r['status']}</div>
+  </div>
+
+  <div class="price-row">
+    <div>
+      <div class="lbl">即時收盤價</div>
+      <span class="price-num">{r['close']:.2f}</span>
+      <span class="price-chg">{chg_arrow} {r['chg']:+.2f}%</span>
+    </div>
+    <div>
+      <div class="lbl">成交量</div>
+      <span class="price-num" style="font-size:24px;">{r['vol']:,}</span>
+      <span class="price-meta">張</span>
+    </div>
+    <div>
+      <div class="lbl">偏多分數</div>
+      <span class="price-num" style="font-size:24px;color:#B89243;">{r['score']} / 100</span>
+    </div>
+  </div>
+
+  <h2>🚦 警示燈號</h2>
+  <div>{alerts_html}</div>
+
+  <h2>📈 技術面總覽</h2>
+  <div class="grid-4">
+    <div class="cell"><div class="lbl">趨勢方向</div><div class="val v-{('up' if r['trend']=='多頭' else 'down' if r['trend']=='空頭' else 'flat')}">{r['trend']}</div></div>
+    <div class="cell"><div class="lbl">RSI(14)</div><div class="val">{f"{r['rsi']:.2f}" if r['rsi'] else 'N/A'}</div></div>
+    <div class="cell"><div class="lbl">MACD 狀態</div><div class="val">{r['macd_status']}</div></div>
+    <div class="cell"><div class="lbl">量能變化</div><div class="val">{r['vol_status']}</div></div>
+  </div>
+  <div class="grid-3" style="margin-top:8px;">
+    <div class="cell"><div class="lbl">MA5</div><div class="val">{f"{r['ma5']:.2f}" if r['ma5'] else 'N/A'}</div></div>
+    <div class="cell"><div class="lbl">MA20</div><div class="val">{f"{r['ma20']:.2f}" if r['ma20'] else 'N/A'}</div></div>
+    <div class="cell"><div class="lbl">MA60</div><div class="val">{f"{r['ma60']:.2f}" if r['ma60'] else 'N/A'}</div></div>
+  </div>
+
+  <h2>💼 籌碼面</h2>
+  <div class="grid-4">{inst_html}</div>
+
+  <h2>📊 基本面</h2>
+  {rev_html}
+
+  <h2>🎯 關鍵價位</h2>
+  <div class="grid-2">
+    <div class="cell"><div class="lbl">壓力區</div><div class="val v-up">{r['resist_lo']:.2f} ~ {r['resist_hi']:.2f}</div></div>
+    <div class="cell"><div class="lbl">支撐區</div><div class="val v-down">{r['support_lo']:.2f} ~ {r['support_hi']:.2f}</div></div>
+  </div>
+
+  <div class="conclusion">
+    <div class="conclusion-label">⭐ 整體結論</div>
+    <div class="conclusion-text">{conclusion}</div>
+  </div>
+
+  <h2>🤖 AI 智能解析</h2>
+  {ai_html}
+
+  <h2>📰 近期重要新聞</h2>
+  {news_html}
+
+  <div class="footer">
+    📊 資料來源：FinMind ｜ 🤖 AI：Google Gemini 2.5 Flash<br>
+    ⚠️ 本報告僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。
+  </div>
+
+</body>
+</html>"""
+    return html
 
 
 # ============================================
@@ -590,8 +849,10 @@ st.title("📊 台股 AI 個股分析")
 st.caption(f"🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞 · FinMind {finmind_token_count} token")
 
 ic1, ic2 = st.columns([4, 1])
-with ic1: sid = st.text_input("stock_input", placeholder="輸入股票代號，例如 2330、0050", label_visibility="collapsed").strip().upper()
-with ic2: go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
+with ic1:
+    sid = st.text_input("stock_input", placeholder="輸入股票代號，例如 2330、0050", label_visibility="collapsed").strip().upper()
+with ic2:
+    go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
 
 st.divider()
 
@@ -609,29 +870,48 @@ if err or not r:
 
 conclusion_color = "#C76A6A" if r['score'] >= 60 else "#7B9E89" if r['score'] <= 40 else "#5C5048"
 
-# === 🌟 導出與分享功能區塊 ===
+# ============================================
+# 📤 導出與分享（HTML 列印版）
+# ============================================
 st.markdown("### 📤 導出與分享")
 c_exp1, c_exp2, c_exp3 = st.columns([1, 1, 2])
 
 with c_exp1:
-    if st.button("📝 產生 A4 完整 AI 報告 (PDF)", use_container_width=True, key="btn_gen_pdf"):
-        with st.spinner("🔄 正在下載字型、呼叫 AI 與整合報告中，請稍候..."):
+    if st.button("📝 產生完整 AI 報告", use_container_width=True, key="btn_gen_report"):
+        with st.spinner("🔄 正在呼叫 AI 與整合報告中，請稍候..."):
             summary = f"- 收盤價：{r['close']:.2f}\n- 成交量：{r['vol']:,} 張\n- 技術指標：RSI={r['rsi']}, MACD={r['macd']}\n- 法人籌碼：合計 {r['itot']:+,} 張\n- 狀態：{r['status']}"
             ai_text = get_ai_analysis(r["name"], r["id"], summary)
             news_text = get_news(r["name"], r["id"])
-            pdf_data = create_full_pdf(r, ai_text, news_text)
-            st.session_state[f'pdf_buffer_{sid}'] = pdf_data
-            st.success("✅ 報告產生完畢！請點擊下方按鈕下載。")
+            html_report = build_html_report(r, ai_text, news_text)
+            st.session_state[f'html_report_{sid}'] = html_report
+            st.success("✅ 報告產生完畢！")
 
-    if f'pdf_buffer_{sid}' in st.session_state:
-        st.download_button(label="⬇️ 下載 PDF 報告", data=st.session_state[f'pdf_buffer_{sid}'], file_name=f"{sid}_{r['name']}_分析報告.pdf", mime="application/pdf", use_container_width=True)
+    if f'html_report_{sid}' in st.session_state:
+        st.download_button(
+            label="⬇️ 下載 HTML 報告",
+            data=st.session_state[f'html_report_{sid}'].encode("utf-8"),
+            file_name=f"{sid}_{r['name']}_AI分析報告.html",
+            mime="text/html",
+            use_container_width=True,
+            help="下載後雙擊開啟，按 Ctrl+P 即可存成 PDF"
+        )
 
 with c_exp2:
     share_text = f"【台股AI分析】{r['name']} ({r['id']})\n股價：{r['close']:.2f} ({r['chg']:+.2f}%)\n趨勢：{r['trend']}\n分數：{r['score']}\n結論：{generate_overall_conclusion(r)}"
-    st.link_button("💬 分享至 LINE", f"https://line.me/R/msg/text/?{share_text}", use_container_width=True)
+    import urllib.parse
+    encoded = urllib.parse.quote(share_text)
+    st.link_button("💬 分享至 LINE", f"https://line.me/R/msg/text/?{encoded}", use_container_width=True)
+
 with c_exp3:
     if st.button("📋 產生純文字摘要", use_container_width=True):
         st.code(share_text, language="text")
+
+# 如果產生過報告，把報告直接顯示在下方（可預覽 + 列印）
+if f'html_report_{sid}' in st.session_state:
+    with st.expander("👁️ 預覽完整報告（可列印 / 存 PDF）", expanded=True):
+        st.markdown("💡 **使用方式**：把報告下載後在瀏覽器開啟 → 按 **Ctrl+P** 即可另存為 PDF（手機選「列印 → 另存 PDF」）")
+        components.html(st.session_state[f'html_report_{sid}'], height=800, scrolling=True)
+
 st.divider()
 
 # ============================================
@@ -645,7 +925,10 @@ with mode_tab1:
     c1, c2, c3, c4 = st.columns(4)
     with c1: st.markdown(f'<div class="inst-card"><div class="inst-label">收盤價</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["close"]:.2f}</div><div style="color:{chg_color};font-size:14px;font-weight:600;">{"▲" if r["chg"]>=0 else "▼"} {r["chg"]:+.2f}%</div></div>', unsafe_allow_html=True)
     with c2: st.markdown(f'<div class="inst-card"><div class="inst-label">成交量</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["vol"]:,}</div><div style="color:#8B7E72;font-size:13px;">張</div></div>', unsafe_allow_html=True)
-    with c3: st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{"#C76A6A" if r["rsi"] and r["rsi"]>70 else "#7B9E89" if r["rsi"] and r["rsi"]<30 else "#3D3833"};font-size:28px;font-weight:700;">{r["rsi"]:.2f}</div></div>', unsafe_allow_html=True)
+    with c3:
+        rsi_color = "#C76A6A" if r["rsi"] and r["rsi"] > 70 else "#7B9E89" if r["rsi"] and r["rsi"] < 30 else "#3D3833"
+        rsi_disp = f"{r['rsi']:.2f}" if r['rsi'] else "N/A"
+        st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{rsi_color};font-size:28px;font-weight:700;">{rsi_disp}</div></div>', unsafe_allow_html=True)
     with c4: st.markdown(f'<div class="inst-card"><div class="inst-label">更新時間</div><div style="color:#3D3833;font-size:22px;font-weight:700;">{datetime.now().strftime("%H:%M")}</div></div>', unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5 = st.tabs(["📈 技術面", "💼 籌碼面", "📊 基本面", "🤖 AI 智能解讀", "📰 即時新聞"])
@@ -664,10 +947,12 @@ with mode_tab1:
             with bc[1]: st.markdown(render_pct_card("YoY 年增率", r["yoy"]), unsafe_allow_html=True)
             with bc[2]: st.markdown(render_pct_card("MoM 月增率", r["mom"]), unsafe_allow_html=True)
     with t4:
-        if st.button("🚀 產生 AI 分析報告", type="primary"):
-            with st.spinner("AI 思考中..."): st.markdown(get_ai_analysis(r["name"], r["id"], f"收盤:{r['close']}, 漲跌:{r['chg']}%, 籌碼:{r['itot']}"))
+        if st.button("🚀 產生 AI 分析報告", type="primary", key="ai_btn_detail"):
+            with st.spinner("AI 思考中..."):
+                summary = f"收盤:{r['close']}, 漲跌:{r['chg']}%, 籌碼:{r['itot']}, 狀態:{r['status']}"
+                st.markdown(get_ai_analysis(r["name"], r["id"], summary))
     with t5:
-        if st.button("🔍 搜尋最新新聞", type="primary"):
+        if st.button("🔍 搜尋最新新聞", type="primary", key="news_btn_detail"):
             with st.spinner("搜尋中..."): st.markdown(get_news(r["name"], r["id"]))
 
 with mode_tab2:
@@ -684,12 +969,18 @@ with mode_tab3:
     with top_left: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=580), use_container_width=True)
     with top_right:
         r1_c1, r1_c2 = st.columns(2)
-        with r1_c1: st.markdown(f'<div class="section-card"><div class="section-title">📊 技術分析</div><div class="kv-row"><span class="kv-label">↗ 趨勢</span><span class="{get_highlight_cls("trend", r["trend"])}">{r["trend"]}</span></div><div class="kv-row"><span class="kv-label">📶 MACD</span><span class="{get_highlight_cls("macd", r["macd_status"])}">{r["macd_status"]}</span></div><div class="kv-row"><span class="kv-label">📦 量能</span><span class="{get_highlight_cls("vol", r["vol_status"])}">{r["vol_status"]}</span></div></div>', unsafe_allow_html=True)
+        with r1_c1: st.markdown(f'<div class="section-card"><div class="section-title">📊 技術分析</div><div class="kv-row"><span class="kv-label">趨勢</span><span class="{get_highlight_cls("trend", r["trend"])}">{r["trend"]}</span></div><div class="kv-row"><span class="kv-label">MACD</span><span class="{get_highlight_cls("macd", r["macd_status"])}">{r["macd_status"]}</span></div><div class="kv-row"><span class="kv-label">量能</span><span class="{get_highlight_cls("vol", r["vol_status"])}">{r["vol_status"]}</span></div></div>', unsafe_allow_html=True)
         with r1_c2: st.markdown(f'<div class="section-card"><div class="section-title">👥 籌碼動向</div><div class="kv-row"><span class="kv-label">外資</span><span class="{get_highlight_cls("num", r["ifor"])}">{r["ifor"]:+,}</span></div><div class="kv-row"><span class="kv-label">投信</span><span class="{get_highlight_cls("num", r["itru"])}">{r["itru"]:+,}</span></div></div>', unsafe_allow_html=True)
         st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title">🎯 偏多分數</div>', unsafe_allow_html=True)
         st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     bot_c1, bot_c2 = st.columns([5, 5])
-    with bot_c1: st.markdown(f'<div class="section-card"><div class="section-title">🗓 多週期</div><div class="kv-row"><span class="kv-label">中線季線</span><span class="kv-value-cyan">{r["ma60"]:.2f}</span></div></div>', unsafe_allow_html=True)
+    with bot_c1:
+        ma60_disp = f"{r['ma60']:.2f}" if r['ma60'] else "N/A"
+        st.markdown(f'<div class="section-card"><div class="section-title">🗓 多週期</div><div class="kv-row"><span class="kv-label">中線季線</span><span class="kv-value-cyan">{ma60_disp}</span></div></div>', unsafe_allow_html=True)
     with bot_c2: st.markdown(f'<div class="section-card"><div class="section-title">🎯 關鍵價位</div><div class="kv-row"><span class="kv-label">壓力區</span><span class="kv-value-up">{r["resist_hi"]:.2f}</span></div><div class="kv-row"><span class="kv-label">支撐區</span><span class="kv-value-down">{r["support_hi"]:.2f}</span></div></div>', unsafe_allow_html=True)
+
+st.divider()
+st.caption(f"📊 資料來源：FinMind · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption("⚠️ 本網站僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。")
