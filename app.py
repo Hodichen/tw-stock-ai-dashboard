@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（三模式：詳細 / 7大重點速覽 / 旗艦全景儀表板）+ PDF導出分享
+台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + A4 完整 PDF 導出與分享）
 """
 import streamlit as st
 import pandas as pd
@@ -12,10 +12,19 @@ from datetime import datetime
 import random
 import time
 import json
+import yfinance as yf
 import io
+import os
+import requests
+import re
 
 # PDF 相關套件
-from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
 
 st.set_page_config(
     page_title="台股 AI 分析",
@@ -30,7 +39,6 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp { background: #F5F1EB !important; color: #4A4540 !important; }
-/* 修正：移除了對 span 的強制變色，避免吃掉我們自訂的紅綠色 */
 .stMarkdown, .stMarkdown p, .stMarkdown li, .stText, [data-testid="stMarkdownContainer"] { color: #4A4540 !important; }
 h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important; }
 [data-testid="stCaptionContainer"], .stCaption { color: #8B7E72 !important; }
@@ -39,235 +47,58 @@ h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important;
 [data-testid="stMetricValue"] { color: #3D3833 !important; font-weight: 700 !important; }
 [data-testid="stMetricDelta"] { font-weight: 600 !important; }
 
-[data-testid="stMetric"] {
-    background: #FAF6F0;
-    border: 1px solid #E5DDD0;
-    border-radius: 10px;
-    padding: 12px 14px;
-}
-
-.stTextInput input {
-    background: #FFFFFF !important;
-    border: 1.5px solid #C9BFB1 !important;
-    color: #3D3833 !important;
-    font-size: 16px !important;
-    border-radius: 8px !important;
-    padding: 10px 14px !important;
-}
-.stTextInput input:focus {
-    border-color: #8B9D83 !important;
-    box-shadow: 0 0 0 2px rgba(139, 157, 131, 0.2) !important;
-}
-
-.stButton button[kind="primary"] {
-    background: #8B9D83 !important;
-    border: 1px solid #6F8169 !important;
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
-    border-radius: 8px !important;
-}
-.stButton button[kind="primary"]:hover {
-    background: #6F8169 !important;
-    border-color: #5A6856 !important;
-}
-.stButton button {
-    background: #FAF6F0 !important;
-    border: 1px solid #D4CABB !important;
-    color: #5C5048 !important;
-    font-weight: 500 !important;
-    border-radius: 8px !important;
-}
-.stButton button:hover {
-    background: #EDE5D5 !important;
-    border-color: #B8AB99 !important;
-}
-
+[data-testid="stMetric"] { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 10px; padding: 12px 14px; }
+.stTextInput input { background: #FFFFFF !important; border: 1.5px solid #C9BFB1 !important; color: #3D3833 !important; font-size: 16px !important; border-radius: 8px !important; padding: 10px 14px !important; }
+.stTextInput input:focus { border-color: #8B9D83 !important; box-shadow: 0 0 0 2px rgba(139, 157, 131, 0.2) !important; }
+.stButton button[kind="primary"] { background: #8B9D83 !important; border: 1px solid #6F8169 !important; color: #FFFFFF !important; font-weight: 600 !important; border-radius: 8px !important; }
+.stButton button[kind="primary"]:hover { background: #6F8169 !important; border-color: #5A6856 !important; }
+.stButton button { background: #FAF6F0 !important; border: 1px solid #D4CABB !important; color: #5C5048 !important; font-weight: 500 !important; border-radius: 8px !important; }
+.stButton button:hover { background: #EDE5D5 !important; border-color: #B8AB99 !important; }
 .stTabs [data-baseweb="tab-list"] { gap: 8px; background: transparent; }
-.stTabs [data-baseweb="tab"] {
-    background: #FAF6F0 !important;
-    color: #5C5048 !important;
-    border-radius: 8px 8px 0 0 !important;
-    padding: 10px 18px !important;
-    border: 1px solid #E5DDD0 !important;
-    font-weight: 500 !important;
-}
-.stTabs [aria-selected="true"] {
-    background: #8B9D83 !important;
-    color: #FFFFFF !important;
-    border-color: #6F8169 !important;
-}
-
-.stAlert { border-radius: 10px !important; border: 1px solid !important; }
-hr, [data-testid="stDivider"] { border-color: #D4CABB !important; background: #D4CABB !important; }
-.stDataFrame { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 8px; }
-.stSpinner > div { border-top-color: #8B9D83 !important; }
-.js-plotly-plot { background: #FAF6F0 !important; border-radius: 8px; padding: 6px; }
-header[data-testid="stHeader"] { background: #F5F1EB !important; }
-.block-container { padding-top: 2rem !important; max-width: 1600px !important; }
+.stTabs [data-baseweb="tab"] { background: #FAF6F0 !important; color: #5C5048 !important; border-radius: 8px 8px 0 0 !important; padding: 10px 18px !important; border: 1px solid #E5DDD0 !important; font-weight: 500 !important; }
+.stTabs [aria-selected="true"] { background: #8B9D83 !important; color: #FFFFFF !important; border-color: #6F8169 !important; }
 
 /* 詳細模式 - 法人卡片 */
-.inst-card {
-    background: #FAF6F0;
-    border: 1px solid #E5DDD0;
-    border-radius: 10px;
-    padding: 14px;
-    text-align: left;
-}
+.inst-card { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 10px; padding: 14px; text-align: left; }
 .inst-label { color: #8B7E72; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .inst-value-up { color: #C76A6A; font-size: 28px; font-weight: 700; }
 .inst-value-down { color: #7B9E89; font-size: 28px; font-weight: 700; }
 .inst-value-flat { color: #8B7E72; font-size: 28px; font-weight: 700; }
 
 /* === 重點速覽 / 戰情室卡片 === */
-.overview-header {
-    background: linear-gradient(135deg, #FAF6F0 0%, #F5EFE5 100%);
-    border: 1px solid #D4CABB;
-    border-radius: 12px;
-    padding: 18px 24px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.08);
-}
-.overview-title {
-    color: #5C5048;
-    font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 6px;
-    letter-spacing: 1px;
-}
-.overview-subtitle {
-    color: #8B7E72;
-    font-size: 14px;
-    margin-bottom: 12px;
-}
-.overview-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-}
-.overview-pill {
-    background: #FFFFFF;
-    border: 1px solid #D4CABB;
-    color: #5C5048;
-    padding: 6px 14px;
-    border-radius: 16px;
-    font-size: 13px;
-    font-weight: 500;
-}
-.overview-pill-red {
-    background: #FBEDED !important;
-    border: 1px solid #E5BFBF !important;
-    color: #C76A6A !important;
-    padding: 6px 14px;
-    border-radius: 16px;
-    font-size: 14px;
-    font-weight: 600;
-}
-.overview-pill-green {
-    background: #EAF1EC !important;
-    border: 1px solid #B8D0BE !important;
-    color: #5C8169 !important;
-    padding: 6px 14px;
-    border-radius: 16px;
-    font-size: 14px;
-    font-weight: 600;
-}
+.overview-header { background: linear-gradient(135deg, #FAF6F0 0%, #F5EFE5 100%); border: 1px solid #D4CABB; border-radius: 12px; padding: 18px 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(120, 108, 90, 0.08); }
+.overview-title { color: #5C5048; font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: 1px; }
+.overview-subtitle { color: #8B7E72; font-size: 14px; margin-bottom: 12px; }
+.overview-pills { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.overview-pill { background: #FFFFFF; border: 1px solid #D4CABB; color: #5C5048; padding: 6px 14px; border-radius: 16px; font-size: 13px; font-weight: 500; }
+.overview-pill-red { background: #FBEDED !important; border: 1px solid #E5BFBF !important; color: #C76A6A !important; padding: 6px 14px; border-radius: 16px; font-size: 14px; font-weight: 600; }
+.overview-pill-green { background: #EAF1EC !important; border: 1px solid #B8D0BE !important; color: #5C8169 !important; padding: 6px 14px; border-radius: 16px; font-size: 14px; font-weight: 600; }
 
-.section-card {
-    background: #FAF6F0;
-    border: 1px solid #E5DDD0;
-    border-radius: 8px;
-    padding: 14px;
-    height: 100%;
-    box-shadow: 0 2px 8px rgba(120, 108, 90, 0.04);
-    margin-bottom: 10px;
-}
-.section-title {
-    color: #8B6F47;
-    font-size: 15px;
-    font-weight: 700;
-    border-bottom: 1px solid #E5DDD0;
-    padding-bottom: 6px;
-    margin-bottom: 10px;
-    letter-spacing: 0.5px;
-    text-align: center;
-}
-.kv-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 0;
-    border-bottom: 1px dashed #E5DDD0;
-    font-size: 13px;
-    min-height: 28px;
-}
-.kv-row:last-child { border-bottom: none; }
+.section-card { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 8px; padding: 14px; height: 100%; box-shadow: 0 2px 8px rgba(120, 108, 90, 0.04); margin-bottom: 10px; }
+.section-title { color: #8B6F47; font-size: 15px; font-weight: 700; border-bottom: 1px solid #E5DDD0; padding-bottom: 6px; margin-bottom: 10px; text-align: center; }
+.kv-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dashed #E5DDD0; font-size: 13px; min-height: 28px; }
 .kv-label { color: #8B7E72; }
 
-/* 數值基礎樣式 (加上 span 提高優先級) */
+/* 數值基礎樣式 */
 span.kv-value { color: #3D3833 !important; font-weight: 600 !important; }
 span.kv-value-up { color: #C76A6A !important; font-weight: 700 !important; }
 span.kv-value-down { color: #7B9E89 !important; font-weight: 700 !important; }
 span.kv-value-yellow { color: #B89243 !important; font-weight: 700 !important; }
 span.kv-value-cyan { color: #5A87A0 !important; font-weight: 700 !important; }
 
-/* --- 🔥 動態放大的 Highlight 樣式 (加上 span 提高優先級) --- */
+/* --- 🔥 動態放大的 Highlight 樣式 --- */
 span.val-highlight-up { color: #C76A6A !important; font-size: 18px !important; font-weight: 800 !important; }
 span.val-highlight-down { color: #7B9E89 !important; font-size: 18px !important; font-weight: 800 !important; }
 span.val-highlight-neutral { color: #B89243 !important; font-size: 18px !important; font-weight: 800 !important; }
 
-.bullet-item {
-    color: #4A4540;
-    font-size: 13px;
-    padding: 4px 0 4px 16px;
-    position: relative;
-    line-height: 1.6;
-}
-.bullet-item::before {
-    content: "●";
-    color: #B89243;
-    position: absolute;
-    left: 0;
-    font-size: 9px;
-    top: 7px;
-}
+.bullet-item { color: #4A4540; font-size: 13px; padding: 4px 0 4px 16px; position: relative; line-height: 1.6; }
+.bullet-item::before { content: "●"; color: #B89243; position: absolute; left: 0; font-size: 9px; top: 7px; }
 
-.conclusion-box {
-    background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%);
-    border: 2px solid #C9B689;
-    border-radius: 8px;
-    padding: 14px 20px;
-    margin: 10px 0;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 2px 8px rgba(184, 146, 67, 0.1);
-}
-.conclusion-title {
-    color: #FAF6F0;
-    background: #8B6F47;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 700;
-    margin-right: 16px;
-    white-space: nowrap;
-}
+.conclusion-box { background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%); border: 2px solid #C9B689; border-radius: 8px; padding: 14px 20px; margin: 10px 0; display: flex; align-items: center; }
+.conclusion-title { color: #FAF6F0; background: #8B6F47; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; margin-right: 16px; white-space: nowrap; }
 
-/* 劇本小卡 */
-.scenario-box {
-    border: 1px solid #D4CABB;
-    border-radius: 6px;
-    padding: 8px;
-    text-align: center;
-    background: #FFFFFF;
-}
-.scenario-title {
-    font-weight: 700;
-    padding: 4px 0;
-    border-radius: 4px;
-    margin-bottom: 6px;
-    font-size: 14px;
-}
+.scenario-box { border: 1px solid #D4CABB; border-radius: 6px; padding: 8px; text-align: center; background: #FFFFFF; }
+.scenario-title { font-weight: 700; padding: 4px 0; border-radius: 4px; margin-bottom: 6px; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -578,11 +409,31 @@ def analyze(stock_id):
     elif itot < 0: score -= 15
     score = max(0, min(100, score))
 
+    # 獲取即時報價覆寫
+    suffixes = ['.TW', '.TWO']
+    for suffix in suffixes:
+        try:
+            ticker = yf.Ticker(f"{stock_id}{suffix}")
+            todays_data = ticker.history(period='1d')
+            if not todays_data.empty:
+                rt_price = float(todays_data['Close'].iloc[-1])
+                rt_vol = int(todays_data['Volume'].iloc[-1] / 1000)
+                prev_data = ticker.history(period='5d')
+                rt_chg = ((rt_price - float(prev_data['Close'].iloc[-2])) / float(prev_data['Close'].iloc[-2])) * 100 if len(prev_data) > 1 else 0.0
+                cl_v, chg = rt_price, rt_chg
+                if rt_vol > 0:
+                    vol_v = rt_vol
+                    if vma5_v and vma5_v > 0: vr_v = (rt_vol * 1000) / vma5_v
+                break
+        except: continue
+        
+    vol_v = vol_v if 'vol_v' in locals() else int(lat["volume"] / 1000)
+
     return {
         "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev, "industry": industry_category,
         "df": df, "pivot": pivot,
-        "close": float(lat["close"]), "chg": chg,
-        "vol": int(lat["volume"] / 1000),
+        "close": float(cl_v), "chg": chg,
+        "vol": vol_v,
         "rsi": rsi_v, "k": k_v, "d": d_v,
         "ma5": ma5_v, "ma20": ma20_v, "ma60": ma60_v,
         "bb_ub": bb_ub_v, "bb_lb": bb_lb_v, "bb_status": bb_status,
@@ -623,85 +474,6 @@ def generate_overall_conclusion(r):
     else: parts.append("等待方向明確")
 
     return "，".join(parts) + "。"
-
-# ============================================
-# PDF 產生函數 (9:16)
-# ============================================
-def create_916_pdf(r):
-    buffer = io.BytesIO()
-    # 9:16 比例 (寬 360pt, 高 640pt)
-    c = canvas.Canvas(buffer, pagesize=(360, 640))
-    
-    # 背景底色
-    c.setFillColorRGB(0.96, 0.94, 0.92) # #F5F1EB
-    c.rect(0, 0, 360, 640, fill=1, stroke=0)
-    
-    # 標題區
-    c.setFillColorRGB(0.36, 0.31, 0.28) # #5C5048
-    c.setFont("Helvetica-Bold", 22)
-    c.drawString(30, 590, f"{r['name']}")
-    c.setFont("Helvetica", 14)
-    c.drawString(30, 570, f"Stock ID: {r['id']} | {r['industry']}")
-    
-    # 價格區
-    price_color = (0.78, 0.42, 0.42) if r['chg'] >= 0 else (0.48, 0.62, 0.54)
-    c.setFillColorRGB(*price_color)
-    c.setFont("Helvetica-Bold", 40)
-    c.drawString(30, 510, f"{r['close']:.2f}")
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(160, 510, f"{r['chg']:+.2f}%")
-    
-    # 分隔線
-    c.setStrokeColorRGB(0.8, 0.8, 0.8)
-    c.line(30, 480, 330, 480)
-    
-    # 關鍵數據列表
-    c.setFillColorRGB(0.3, 0.3, 0.3)
-    y_pos = 450
-    data_points = [
-        ("Trend Status", f"{r['trend']}"),
-        ("Score", f"{r['score']} / 100"),
-        ("Volume", f"{r['vol']:,} (Lots)"),
-        ("RSI(14)", f"{r['rsi']:.1f}" if r['rsi'] else "N/A"),
-        ("MACD", f"{r['macd_status']}"),
-        ("Support", f"{r['support_hi']}"),
-        ("Resistance", f"{r['resist_hi']}")
-    ]
-    
-    for label, val in data_points:
-        c.setFont("Helvetica", 12)
-        c.drawString(30, y_pos, label)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawRightString(330, y_pos, val)
-        y_pos -= 28
-        
-    # 結論區 (用文字框模擬)
-    c.setFillColorRGB(0.98, 0.96, 0.94)
-    c.rect(30, 100, 300, 120, fill=1, stroke=1)
-    c.setFillColorRGB(0.36, 0.31, 0.28)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, 200, "AI Overall Analysis:")
-    
-    # 簡易斷行處理結論
-    text_obj = c.beginText(40, 180)
-    text_obj.setFont("Helvetica", 10)
-    text_obj.setLeading(14)
-    text_obj.textLine("PDF Export Summary (English Placeholder)")
-    text_obj.textLine(f"Trend: {r['trend']}")
-    text_obj.textLine(f"Status: {r['status']}")
-    c.drawText(text_obj)
-    
-    # 頁尾
-    c.setFont("Helvetica-Oblique", 8)
-    c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(30, 50, f"Generated at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    c.drawString(30, 40, "Disclaimer: For research only. Not investment advice.")
-    
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-    return buffer
-
 
 # ============================================
 # Gemini API
@@ -757,6 +529,116 @@ def get_news(stock_name, stock_id):
 每則新聞格式：\n### 📰 [新聞標題]\n- **日期**：YYYY-MM-DD\n- **重點摘要**：...\n- **影響評估**：...
 請使用繁體中文，按時間排序。"""
     return call_gemini_with_retry(prompt, use_search=True)
+
+
+# ============================================
+# PDF 產生邏輯 (自動下載字型 + A4 完整匯出)
+# ============================================
+@st.cache_resource
+def load_chinese_font():
+    """自動下載並註冊開源中文字型 NotoSansTC，解決豆腐塊問題"""
+    font_path = "NotoSansTC-Regular.ttf"
+    font_url = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
+    
+    if not os.path.exists(font_path):
+        try:
+            r = requests.get(font_url, allow_redirects=True)
+            with open(font_path, 'wb') as f:
+                f.write(r.content)
+        except Exception:
+            pass
+            
+    try:
+        pdfmetrics.registerFont(TTFont('NotoSansTC', font_path))
+        return 'NotoSansTC'
+    except Exception:
+        return 'Helvetica' # 萬一下載失敗的備用方案
+
+def create_full_pdf(r, ai_text, news_text):
+    """產生 A4 完整版包含 AI 解析與新聞的 PDF 報告"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=40, bottomMargin=40)
+    elements = []
+    
+    font_name = load_chinese_font()
+    
+    # 定義樣式
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(name='Title', fontName=font_name, fontSize=22, leading=26, spaceAfter=12, textColor=colors.HexColor('#5C5048'))
+    subtitle_style = ParagraphStyle(name='SubTitle', fontName=font_name, fontSize=12, leading=16, spaceAfter=20, textColor=colors.HexColor('#8B7E72'))
+    h1_style = ParagraphStyle(name='H1', fontName=font_name, fontSize=16, leading=22, spaceAfter=10, textColor=colors.HexColor('#8B6F47'))
+    h2_style = ParagraphStyle(name='H2', fontName=font_name, fontSize=14, leading=20, spaceAfter=8, textColor=colors.HexColor('#3D3833'))
+    normal_style = ParagraphStyle(name='Normal', fontName=font_name, fontSize=11, leading=18, spaceAfter=8, textColor=colors.HexColor('#4A4540'))
+    
+    # --- 標題區塊 ---
+    elements.append(Paragraph(f"📊 台股 AI 深度分析報告：{r['name']} ({r['id']})", title_style))
+    elements.append(Paragraph(f"產業：{r['industry']} | 報告生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", subtitle_style))
+    
+    # --- 關鍵數據表格 ---
+    data = [
+        ["即時收盤價", f"{r['close']:.2f}", "漲跌幅", f"{r['chg']:+.2f}%"],
+        ["趨勢方向", r['trend'], "偏多分數", f"{r['score']} / 100"],
+        ["成交量(張)", f"{r['vol']:,}", "狀態判定", r['status']],
+        ["RSI(14)", f"{r['rsi']:.1f}" if r['rsi'] else "N/A", "MACD", r['macd_status']],
+        ["壓力區", f"{r['resist_hi']:.2f}", "支撐區", f"{r['support_hi']:.2f}"]
+    ]
+    
+    t = Table(data, colWidths=[100, 130, 100, 130])
+    t.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), font_name),
+        ('FONTSIZE', (0,0), (-1,-1), 11),
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#FAF6F0')),
+        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#FAF6F0')),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#3D3833')),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5DDD0')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 20))
+    
+    # --- 總結區塊 ---
+    elements.append(Paragraph("⭐ AI 整體結論", h1_style))
+    elements.append(Paragraph(generate_overall_conclusion(r), normal_style))
+    elements.append(Spacer(1, 15))
+    
+    # --- Markdown 轉換小工具 ---
+    def parse_markdown_to_platypus(text_content):
+        for line in text_content.split('\n'):
+            line = line.strip()
+            if not line: continue
+            
+            # 將 **粗體** 轉換為 <b>標籤
+            line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+            
+            if line.startswith('### '):
+                elements.append(Paragraph(line[4:], h2_style))
+            elif line.startswith('## '):
+                elements.append(Paragraph(line[3:], h1_style))
+            elif line.startswith('# '):
+                elements.append(Paragraph(line[2:], h1_style))
+            elif line.startswith('- '):
+                # 簡單的項目符號排版
+                elements.append(Paragraph(f"• {line[2:]}", ParagraphStyle(name='Bullet', parent=normal_style, leftIndent=15)))
+            else:
+                elements.append(Paragraph(line, normal_style))
+    
+    # --- AI 深度分析區塊 ---
+    if ai_text:
+        elements.append(Spacer(1, 15))
+        parse_markdown_to_platypus(ai_text)
+        
+    # --- 即時新聞區塊 ---
+    if news_text:
+        elements.append(Spacer(1, 25))
+        elements.append(Paragraph("📰 近期重要新聞", h1_style))
+        parse_markdown_to_platypus(news_text)
+        
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 
 # ============================================
@@ -930,21 +812,39 @@ if err or r is None:
     st.error(f"❌ {err or '分析失敗'}")
     st.stop()
 
-# 動態判斷結論顏色 (分數>=60為紅, <=40為綠, 介於中間為棕灰色)
+# 動態判斷結論顏色
 conclusion_color = "#C76A6A" if r['score'] >= 60 else "#7B9E89" if r['score'] <= 40 else "#5C5048"
 
-# === 🌟 新增：導出與分享功能區塊 ===
+# === 🌟 導出與分享功能區塊 (改版：兩段式自動呼叫 AI) ===
 st.markdown("### 📤 導出與分享")
 c_exp1, c_exp2, c_exp3 = st.columns([1, 1, 2])
+
 with c_exp1:
-    pdf_data = create_916_pdf(r)
-    st.download_button(
-        label="📱 下載 9:16 PDF", 
-        data=pdf_data, 
-        file_name=f"{sid}_Report.pdf", 
-        mime="application/pdf", 
-        use_container_width=True
-    )
+    # 兩段式下載：先按按鈕觸發運算，運算完才顯示真正的 Download Button
+    if st.button("📝 產生 A4 完整 AI 報告 (PDF)", use_container_width=True, key="btn_gen_pdf"):
+        with st.spinner("🔄 正在整合數據、呼叫 AI 與搜尋最新新聞，產生報告中..."):
+            # 準備給 AI 的摘要資料
+            summary = f"- 收盤價：{r['close']:.2f}\n- 成交量：{r['vol']:,} 張\n- 技術指標：RSI={r['rsi']}, MACD={r['macd']}\n- 法人籌碼：合計 {r['itot']:+,} 張\n- 狀態：{r['status']}"
+            
+            # 呼叫 AI 解析與新聞
+            ai_text = get_ai_analysis(r["name"], r["id"], summary)
+            news_text = get_news(r["name"], r["id"])
+            
+            # 產生 PDF (包含中文字型)
+            pdf_data = create_full_pdf(r, ai_text, news_text)
+            st.session_state[f'pdf_buffer_{sid}'] = pdf_data
+            st.success("✅ 報告產生完畢！請點擊下方按鈕下載")
+
+    # 如果已經產生好，就顯示下載按鈕
+    if f'pdf_buffer_{sid}' in st.session_state:
+        st.download_button(
+            label="⬇️ 點此下載 PDF 報告", 
+            data=st.session_state[f'pdf_buffer_{sid}'], 
+            file_name=f"{sid}_{r['name']}_完整分析報告.pdf", 
+            mime="application/pdf", 
+            use_container_width=True
+        )
+
 with c_exp2:
     share_text = f"【台股AI分析】{r['name']} ({r['id']})\n股價：{r['close']:.2f} ({r['chg']:+.2f}%)\n趨勢：{r['trend']}\n分數：{r['score']}\n結論：{generate_overall_conclusion(r)}"
     st.link_button("💬 分享至 LINE", f"https://line.me/R/msg/text/?{share_text}", use_container_width=True)
@@ -1084,7 +984,6 @@ with mode_tab2:
 # 模式 3：🖥️ 旗艦全景儀表板 (套用 Highlight)
 # --------------------------------------------
 with mode_tab3:
-    # --- 頂端資訊條 ---
     chg_color = '#C76A6A' if r['chg'] >= 0 else '#7B9E89'
     st.markdown(f"""
     <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #E5DDD0; padding-bottom:8px; margin-bottom:12px;">
@@ -1100,20 +999,14 @@ with mode_tab3:
     </div>
     """, unsafe_allow_html=True)
 
-    # --- 排版：上半部 (圖表 60% | 資訊面板 40%) ---
     top_left, top_right = st.columns([6, 4])
-    
     with top_left:
         st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=580), use_container_width=True, config={"displayModeBar": False})
 
     with top_right:
-        # 右上：總覽與概況 (2欄)
         r1_c1, r1_c2 = st.columns(2)
         with r1_c1:
-            # 預先計算並套用 Highlight CSS 類別
             trend_val = f"<span class='{get_highlight_cls('trend', r['trend'])}'>{r['trend']}</span>"
-            
-            # 計算均線排列狀態
             if r['ma5'] and r['ma20'] and r['ma60']:
                 if r['ma5'] > r['ma20'] > r['ma60']: ma_str = "多週期排列"
                 elif r['ma5'] < r['ma20'] < r['ma60']: ma_str = "空頭排列"
@@ -1121,7 +1014,6 @@ with mode_tab3:
             else: ma_str = "資料不足"
             ma_val = f"<span class='{get_highlight_cls('ma', ma_str)}'>{ma_str}</span>"
             
-            # 計算 KD 狀態
             if r['k'] and r['d']:
                 if r['k'] > 80 and r['d'] > 80: kd_str = "高檔鈍化"
                 elif r['k'] < 20 and r['d'] < 20: kd_str = "低檔鈍化"
@@ -1133,7 +1025,6 @@ with mode_tab3:
             macd_val = f"<span class='{get_highlight_cls('macd', r['macd_status'])}'>{r['macd_status']}</span>"
             vol_val = f"<span class='{get_highlight_cls('vol', r['vol_status'])}'>{r['vol_status']}</span>"
             
-            # 計算量價關係
             if r['chg'] > 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價量齊揚"
             elif r['chg'] < 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價跌量增"
             elif r['chg'] < 0 and r['vr'] and r['vr'] < 0.8: pv_str = "價跌量縮"
@@ -1153,7 +1044,6 @@ with mode_tab3:
             </div>
             """, unsafe_allow_html=True)
 
-            # 新增：布林通道 (Bollinger Bands) 面板
             if r['bb_ub']:
                 bb_val = f"<span class='{get_highlight_cls('bb', r['bb_status'])}'>{r['bb_status']}</span>"
                 st.markdown(f"""
@@ -1167,12 +1057,7 @@ with mode_tab3:
                 """, unsafe_allow_html=True)
             
         with r1_c2:
-            # 營收 Highlight
-            if r['has_rev']:
-                rev_val = f"<span class='{get_highlight_cls('num', r['yoy'])}'>{r['yoy']:+.2f}%</span>"
-            else:
-                rev_val = "N/A"
-            
+            rev_val = f"<span class='{get_highlight_cls('num', r['yoy'])}'>{r['yoy']:+.2f}%</span>" if r['has_rev'] else "N/A"
             st.markdown(f"""
             <div class="section-card" style="margin-bottom:10px;">
                 <div class="section-title">🏢 基本概況</div>
@@ -1182,11 +1067,9 @@ with mode_tab3:
             </div>
             """, unsafe_allow_html=True)
             
-            # 籌碼分析 Highlight
             ifor_val = f"<span class='{get_highlight_cls('num', r['ifor'])}'>{r['ifor']:+,} 張</span>"
             itru_val = f"<span class='{get_highlight_cls('num', r['itru'])}'>{r['itru']:+,} 張</span>"
             itot_val = f"<span class='{get_highlight_cls('num', r['itot'])}'>{r['itot']:+,} 張</span>"
-            
             st.markdown(f"""
             <div class="section-card">
                 <div class="section-title">👥 籌碼分析</div>
@@ -1196,7 +1079,6 @@ with mode_tab3:
             </div>
             """, unsafe_allow_html=True)
 
-        # 右中：燈號、勝率儀表板、價位
         r2_c1, r2_c2, r2_c3 = st.columns([1, 1.2, 1])
         with r2_c1:
             risk = "high" if "🔴" in r['status'] else "mid" if "🟡" in r['status'] else "low"
@@ -1213,7 +1095,6 @@ with mode_tab3:
             """, unsafe_allow_html=True)
         with r2_c2:
             st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title" style="margin-bottom:0;">🎯 偏多分數</div>', unsafe_allow_html=True)
-            # 這裡呼叫加了指標箭頭的儀表板
             st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False})
             st.markdown('</div>', unsafe_allow_html=True)
         with r2_c3:
@@ -1231,7 +1112,6 @@ with mode_tab3:
             </div>
             """, unsafe_allow_html=True)
 
-    # --- 排版：下半部 (劇本區與型態) ---
     bot_c1, bot_c2, bot_c3 = st.columns([2.5, 2.5, 5])
     
     with bot_c1:
@@ -1257,7 +1137,6 @@ with mode_tab3:
         """, unsafe_allow_html=True)
 
     with bot_c3:
-        # 隔日操作劇本推算
         c = r['close']
         res = r['resist_hi']
         sup = r['support_hi']
@@ -1287,14 +1166,12 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- 底部結論區 (動態放大變色) ---
     st.markdown(f"""
     <div class="conclusion-box" style="padding: 18px 24px;">
         <div class="conclusion-title" style="font-size: 16px;">⭐ 整體結論</div>
         <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
     </div>
     """, unsafe_allow_html=True)
-
 
 st.divider()
 st.caption(f"📊 資料來源：FinMind · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
