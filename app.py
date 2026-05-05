@@ -481,10 +481,9 @@ def render_pct_card(label, pct, suffix="%"):
 
 
 # ============================================
-# 🆕 HTML 列印報告產生器（取代舊 PDF）
+# 🆕 HTML 列印報告產生器（支援 Plotly 圖表）
 # ============================================
 def md_to_html(text):
-    """非常簡單的 Markdown → HTML 轉換器，支援 # / ## / ### / ** / -"""
     if not text:
         return ""
     lines = text.split("\n")
@@ -499,12 +498,9 @@ def md_to_html(text):
             out.append("")
             continue
 
-        # 處理粗體 **xxx**
-        # 用簡單 regex
         import re as _re
         line = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
 
-        # 標題
         if line.startswith("### "):
             if in_list:
                 out.append("</ul>")
@@ -536,27 +532,27 @@ def md_to_html(text):
     return "\n".join(out)
 
 
-def build_html_report(r, ai_text, news_text):
-    """產生完整 HTML 報告（適合在新分頁開啟，按 Ctrl+P 列印或存 PDF）"""
+def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
+    """產生完整 HTML 報告，包含 Plotly 圖表"""
     name = r["name"]
     sid = r["id"]
     industry = r["industry"]
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 漲跌色（台股慣例）
+    # 將圖表轉換為 HTML Snippet
+    kline_html_str = fig_kline.to_html(full_html=False, include_plotlyjs='cdn') if fig_kline else ""
+    inst_html_str = fig_inst.to_html(full_html=False, include_plotlyjs='cdn') if fig_inst else "<p class='hint'>無法人籌碼資料</p>"
+
+    # 漲跌色
     chg_color = "#C76A6A" if r["chg"] >= 0 else "#7B9E89"
     chg_arrow = "▲" if r["chg"] >= 0 else "▼"
 
     # 警示燈
     alerts_html = ""
-    for a in r["alerts"]["red"]:
-        alerts_html += f'<span class="chip chip-red">🔴 {a}</span>'
-    for a in r["alerts"]["yellow"]:
-        alerts_html += f'<span class="chip chip-yellow">🟡 {a}</span>'
-    for a in r["alerts"]["green"]:
-        alerts_html += f'<span class="chip chip-green">🟢 {a}</span>'
-    if not alerts_html:
-        alerts_html = '<span class="chip">⚪ 目前無特殊警示</span>'
+    for a in r["alerts"]["red"]: alerts_html += f'<span class="chip chip-red">🔴 {a}</span>'
+    for a in r["alerts"]["yellow"]: alerts_html += f'<span class="chip chip-yellow">🟡 {a}</span>'
+    for a in r["alerts"]["green"]: alerts_html += f'<span class="chip chip-green">🟢 {a}</span>'
+    if not alerts_html: alerts_html = '<span class="chip">⚪ 目前無特殊警示</span>'
 
     # 法人 4 格
     def fmt_inst(label, v):
@@ -578,10 +574,7 @@ def build_html_report(r, ai_text, news_text):
     else:
         rev_html = '<p class="hint">📌 ETF / 興櫃，無月營收資料</p>'
 
-    # 整體結論
     conclusion = generate_overall_conclusion(r)
-
-    # AI / 新聞
     ai_html = md_to_html(ai_text) if ai_text else "<p class='hint'>（未產生 AI 解析）</p>"
     news_html = md_to_html(news_text) if news_text else "<p class='hint'>（未抓取新聞）</p>"
 
@@ -629,149 +622,53 @@ def build_html_report(r, ai_text, news_text):
   }}
   .btn:hover {{ background: #6F8169; }}
 
-  .header {{
-    border-bottom: 3px solid #C9B689;
-    padding-bottom: 14px;
-    margin-bottom: 22px;
-  }}
-  .header h1 {{
-    color: #5C5048;
-    margin: 0;
-    font-size: 26px;
-  }}
-  .header .meta {{
-    color: #8B7E72;
-    font-size: 13px;
-    margin-top: 6px;
-  }}
+  .header {{ border-bottom: 3px solid #C9B689; padding-bottom: 14px; margin-bottom: 22px; }}
+  .header h1 {{ color: #5C5048; margin: 0; font-size: 26px; }}
+  .header .meta {{ color: #8B7E72; font-size: 13px; margin-top: 6px; }}
 
-  h2 {{
-    color: #8B6F47;
-    border-left: 4px solid #C9B689;
-    padding-left: 12px;
-    margin-top: 28px;
-    margin-bottom: 12px;
-    font-size: 18px;
-  }}
-  h3 {{
-    color: #5C5048;
-    font-size: 15px;
-    margin-top: 18px;
-    margin-bottom: 8px;
-  }}
+  h2 {{ color: #8B6F47; border-left: 4px solid #C9B689; padding-left: 12px; margin-top: 28px; margin-bottom: 12px; font-size: 18px; }}
+  h3 {{ color: #5C5048; font-size: 15px; margin-top: 18px; margin-bottom: 8px; }}
   p {{ margin: 6px 0; }}
   ul {{ margin: 6px 0 12px 0; padding-left: 22px; }}
   li {{ margin: 3px 0; }}
   strong {{ color: #C76A6A; }}
 
-  .price-row {{
-    background: linear-gradient(135deg, #FAF6F0, #F5EFE5);
-    border: 1px solid #D4CABB;
-    border-radius: 10px;
-    padding: 16px 22px;
-    margin-bottom: 18px;
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
-  }}
-  .price-num {{
-    font-size: 32px;
-    font-weight: 700;
-    color: #3D3833;
-  }}
-  .price-chg {{
-    font-size: 18px;
-    font-weight: 700;
-    color: {chg_color};
-  }}
-  .price-meta {{
-    color: #8B7E72;
-    font-size: 13px;
-  }}
+  .price-row {{ background: linear-gradient(135deg, #FAF6F0, #F5EFE5); border: 1px solid #D4CABB; border-radius: 10px; padding: 16px 22px; margin-bottom: 18px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }}
+  .price-num {{ font-size: 32px; font-weight: 700; color: #3D3833; }}
+  .price-chg {{ font-size: 18px; font-weight: 700; color: {chg_color}; }}
+  .price-meta {{ color: #8B7E72; font-size: 13px; }}
 
-  .grid-4 {{
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-  }}
-  .grid-3 {{
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }}
-  .grid-2 {{
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-  }}
-  .cell {{
-    background: #FAF6F0;
-    border: 1px solid #E5DDD0;
-    border-radius: 8px;
-    padding: 12px;
-    text-align: left;
-  }}
+  .grid-4 {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }}
+  .grid-3 {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+  .grid-2 {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }}
+  .cell {{ background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 8px; padding: 12px; text-align: left; }}
   .lbl {{ color: #8B7E72; font-size: 12px; margin-bottom: 6px; }}
   .val {{ font-size: 22px; font-weight: 700; color: #3D3833; }}
   .v-up {{ color: #C76A6A; }}
   .v-down {{ color: #7B9E89; }}
   .v-flat {{ color: #8B7E72; }}
 
-  .chip {{
-    display: inline-block;
-    padding: 5px 12px;
-    border-radius: 14px;
-    margin: 3px 4px 3px 0;
-    font-size: 13px;
-    background: #F0EDE7;
-    color: #5C5048;
-    border: 1px solid #D4CABB;
-  }}
+  .chip {{ display: inline-block; padding: 5px 12px; border-radius: 14px; margin: 3px 4px 3px 0; font-size: 13px; background: #F0EDE7; color: #5C5048; border: 1px solid #D4CABB; }}
   .chip-red {{ background: #FBEDED; color: #C76A6A; border-color: #E5BFBF; }}
   .chip-yellow {{ background: #FAF1D8; color: #B89243; border-color: #E5D9A8; }}
   .chip-green {{ background: #EAF1EC; color: #5C8169; border-color: #B8D0BE; }}
 
-  .conclusion {{
-    background: linear-gradient(135deg, #F0E9DA, #E8DFCC);
-    border: 2px solid #C9B689;
-    border-radius: 10px;
-    padding: 16px 20px;
-    margin: 18px 0;
-  }}
-  .conclusion-label {{
-    background: #8B6F47;
-    color: #fff;
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 13px;
-    font-weight: 700;
-    display: inline-block;
-    margin-bottom: 8px;
-  }}
-  .conclusion-text {{
-    font-size: 15px;
-    color: #5C5048;
-    font-weight: 500;
-  }}
+  .conclusion {{ background: linear-gradient(135deg, #F0E9DA, #E8DFCC); border: 2px solid #C9B689; border-radius: 10px; padding: 16px 20px; margin: 18px 0; }}
+  .conclusion-label {{ background: #8B6F47; color: #fff; padding: 4px 10px; border-radius: 5px; font-size: 13px; font-weight: 700; display: inline-block; margin-bottom: 8px; }}
+  .conclusion-text {{ font-size: 15px; color: #5C5048; font-weight: 500; }}
+  
+  .chart-container {{ background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #D4CABB; margin-bottom: 20px; width: 100%; overflow: hidden; }}
 
   .hint {{ color: #8B7E72; font-style: italic; font-size: 13px; }}
 
-  .footer {{
-    margin-top: 40px;
-    padding-top: 16px;
-    border-top: 1px solid #D4CABB;
-    color: #8B7E72;
-    font-size: 12px;
-    text-align: center;
-  }}
+  .footer {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid #D4CABB; color: #8B7E72; font-size: 12px; text-align: center; }}
 
-  /* === 列印專用樣式（按 Ctrl+P 後生效）=== */
+  /* === 列印專用樣式 === */
   @media print {{
     body {{ background: #fff; padding: 12mm; max-width: 100%; }}
     .toolbar, .no-print {{ display: none !important; }}
     h2 {{ page-break-after: avoid; }}
-    .conclusion, .price-row, .grid-3, .grid-4 {{ page-break-inside: avoid; }}
+    .conclusion, .price-row, .grid-3, .grid-4, .chart-container {{ page-break-inside: avoid; }}
   }}
 </style>
 </head>
@@ -806,6 +703,11 @@ def build_html_report(r, ai_text, news_text):
 
   <h2>🚦 警示燈號</h2>
   <div>{alerts_html}</div>
+  
+  <h2>📈 趨勢圖表 (日 K 線)</h2>
+  <div class="chart-container">
+    {kline_html_str}
+  </div>
 
   <h2>📈 技術面總覽</h2>
   <div class="grid-4">
@@ -820,8 +722,11 @@ def build_html_report(r, ai_text, news_text):
     <div class="cell"><div class="lbl">MA60</div><div class="val">{f"{r['ma60']:.2f}" if r['ma60'] else 'N/A'}</div></div>
   </div>
 
-  <h2>💼 籌碼面</h2>
+  <h2>👥 籌碼面動向</h2>
   <div class="grid-4">{inst_html}</div>
+  <div class="chart-container" style="margin-top:8px;">
+    {inst_html_str}
+  </div>
 
   <h2>📊 基本面</h2>
   {rev_html}
@@ -889,11 +794,17 @@ c_exp1, c_exp2, c_exp3 = st.columns([1, 1, 2])
 
 with c_exp1:
     if st.button("📝 產生完整 AI 報告", use_container_width=True, key="btn_gen_report"):
-        with st.spinner("🔄 正在呼叫 AI 與整合報告中，請稍候..."):
+        with st.spinner("🔄 正在呼叫 AI 與圖表整合中，請稍候..."):
             summary = f"- 收盤價：{r['close']:.2f}\n- 成交量：{r['vol']:,} 張\n- 技術指標：RSI={r['rsi']}, MACD={r['macd']}\n- 法人籌碼：合計 {r['itot']:+,} 張\n- 狀態：{r['status']}"
             ai_text = get_ai_analysis(r["name"], r["id"], summary)
             news_text = get_news(r["name"], r["id"])
-            html_report = build_html_report(r, ai_text, news_text)
+            
+            # 產生要匯出的圖表
+            fig_kline_export = plot_kline(r["df"], r["name"], r["id"], height=550)
+            fig_inst_export = plot_inst(r["pivot"], r["df"]) if not r["pivot"].empty else None
+
+            # 組合進 HTML
+            html_report = build_html_report(r, ai_text, news_text, fig_kline=fig_kline_export, fig_inst=fig_inst_export)
             st.session_state[f'html_report_{sid}'] = html_report
             st.success("✅ 報告產生完畢！")
 
@@ -943,14 +854,17 @@ with mode_tab1:
     with c4: st.markdown(f'<div class="inst-card"><div class="inst-label">更新時間</div><div style="color:#3D3833;font-size:22px;font-weight:700;">{datetime.now().strftime("%H:%M")}</div></div>', unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5 = st.tabs(["📈 技術面", "💼 籌碼面", "📊 基本面", "🤖 AI 智能解讀", "📰 即時新聞"])
-    with t1: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"]), use_container_width=True)
+    
+    # 修正重點 1：加入獨立的 key
+    with t1: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"]), use_container_width=True, key="kline_tab1")
     with t2:
         cc = st.columns(4)
         cc[0].markdown(render_inst_card("外資", r["ifor"]), unsafe_allow_html=True)
         cc[1].markdown(render_inst_card("投信", r["itru"]), unsafe_allow_html=True)
         cc[2].markdown(render_inst_card("自營商", r["idal"]), unsafe_allow_html=True)
         cc[3].markdown(render_inst_card("合計", r["itot"]), unsafe_allow_html=True)
-        if not r["pivot"].empty: st.plotly_chart(plot_inst(r["pivot"], r["df"]), use_container_width=True)
+        # 修正重點 1：加入獨立的 key
+        if not r["pivot"].empty: st.plotly_chart(plot_inst(r["pivot"], r["df"]), use_container_width=True, key="inst_tab1")
     with t3:
         if r["has_rev"]:
             bc = st.columns(3)
@@ -985,7 +899,6 @@ with mode_tab2:
     </div>
     """, unsafe_allow_html=True)
 
-    # 第一排：股價表現 / 趨勢與均線 / 技術指標
     row1c1, row1c2, row1c3 = st.columns(3)
 
     # 區塊 1：股價表現
@@ -1070,7 +983,6 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 第二排：量能與型態 / 籌碼分析 / 關鍵價位
     row2c1, row2c2, row2c3 = st.columns(3)
 
     # 區塊 4：量能與型態
@@ -1177,7 +1089,8 @@ with mode_tab3:
     top_left, top_right = st.columns([6, 4])
 
     with top_left:
-        st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=620), use_container_width=True)
+        # 修正重點 1：加入獨立的 key
+        st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=620), use_container_width=True, key="kline_tab3")
 
     with top_right:
         # 區塊 1：技術分析總覽
@@ -1285,11 +1198,11 @@ with mode_tab3:
 
     with bot_c2:
         st.markdown('<div class="section-card" style="padding:8px;"><div class="section-title">🎯 偏多分數</div>', unsafe_allow_html=True)
-        st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False})
+        # 修正重點 1：加入獨立的 key
+        st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False}, key="gauge_tab3")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with bot_c3:
-        # 籌碼合計買賣（強調用大字）
         itot_cls_big = "kv-value-up" if r['itot'] > 0 else "kv-value-down" if r['itot'] < 0 else "kv-value"
         st.markdown(f"""
         <div class="section-card">
