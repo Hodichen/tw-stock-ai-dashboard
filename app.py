@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + A4 完整 PDF 導出與分享）
+台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + A4 完整 PDF 導出與分享）- 解決亂碼版
 """
 import streamlit as st
 import pandas as pd
@@ -15,7 +15,7 @@ import json
 import yfinance as yf
 import io
 import os
-import requests
+import urllib.request
 import re
 
 # PDF 相關套件
@@ -58,14 +58,12 @@ h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important;
 .stTabs [data-baseweb="tab"] { background: #FAF6F0 !important; color: #5C5048 !important; border-radius: 8px 8px 0 0 !important; padding: 10px 18px !important; border: 1px solid #E5DDD0 !important; font-weight: 500 !important; }
 .stTabs [aria-selected="true"] { background: #8B9D83 !important; color: #FFFFFF !important; border-color: #6F8169 !important; }
 
-/* 詳細模式 - 法人卡片 */
 .inst-card { background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 10px; padding: 14px; text-align: left; }
 .inst-label { color: #8B7E72; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .inst-value-up { color: #C76A6A; font-size: 28px; font-weight: 700; }
 .inst-value-down { color: #7B9E89; font-size: 28px; font-weight: 700; }
 .inst-value-flat { color: #8B7E72; font-size: 28px; font-weight: 700; }
 
-/* === 重點速覽 / 戰情室卡片 === */
 .overview-header { background: linear-gradient(135deg, #FAF6F0 0%, #F5EFE5 100%); border: 1px solid #D4CABB; border-radius: 12px; padding: 18px 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(120, 108, 90, 0.08); }
 .overview-title { color: #5C5048; font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: 1px; }
 .overview-subtitle { color: #8B7E72; font-size: 14px; margin-bottom: 12px; }
@@ -79,14 +77,12 @@ h1, h2, h3, h4, h5, h6 { color: #5C5048 !important; font-weight: 600 !important;
 .kv-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dashed #E5DDD0; font-size: 13px; min-height: 28px; }
 .kv-label { color: #8B7E72; }
 
-/* 數值基礎樣式 */
 span.kv-value { color: #3D3833 !important; font-weight: 600 !important; }
 span.kv-value-up { color: #C76A6A !important; font-weight: 700 !important; }
 span.kv-value-down { color: #7B9E89 !important; font-weight: 700 !important; }
 span.kv-value-yellow { color: #B89243 !important; font-weight: 700 !important; }
 span.kv-value-cyan { color: #5A87A0 !important; font-weight: 700 !important; }
 
-/* --- 🔥 動態放大的 Highlight 樣式 --- */
 span.val-highlight-up { color: #C76A6A !important; font-size: 18px !important; font-weight: 800 !important; }
 span.val-highlight-down { color: #7B9E89 !important; font-size: 18px !important; font-weight: 800 !important; }
 span.val-highlight-neutral { color: #B89243 !important; font-size: 18px !important; font-weight: 800 !important; }
@@ -96,7 +92,6 @@ span.val-highlight-neutral { color: #B89243 !important; font-size: 18px !importa
 
 .conclusion-box { background: linear-gradient(135deg, #F0E9DA 0%, #E8DFCC 100%); border: 2px solid #C9B689; border-radius: 8px; padding: 14px 20px; margin: 10px 0; display: flex; align-items: center; }
 .conclusion-title { color: #FAF6F0; background: #8B6F47; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; margin-right: 16px; white-space: nowrap; }
-
 .scenario-box { border: 1px solid #D4CABB; border-radius: 6px; padding: 8px; text-align: center; background: #FFFFFF; }
 .scenario-title { font-weight: 700; padding: 4px 0; border-radius: 4px; margin-bottom: 6px; font-size: 14px; }
 </style>
@@ -153,18 +148,15 @@ gemini_keys = get_gemini_keys()
 # 技術指標與 Highlight 輔助函數
 # ============================================
 def sma(s, n): return s.rolling(n, min_periods=1).mean()
-
 def rsi_calc(s, n=14):
     d = s.diff()
     g = d.where(d > 0, 0).ewm(com=n - 1, min_periods=n).mean()
     l = (-d.where(d < 0, 0)).ewm(com=n - 1, min_periods=n).mean()
     return 100 - 100 / (1 + g / l)
-
 def macd_calc(s):
     m = s.ewm(span=12, adjust=False).mean() - s.ewm(span=26, adjust=False).mean()
     sig = m.ewm(span=9, adjust=False).mean()
     return m, sig, m - sig
-
 def kd_calc(hi, lo, cl):
     ll = lo.rolling(9, min_periods=1).min()
     hh = hi.rolling(9, min_periods=1).max()
@@ -177,8 +169,7 @@ def safe(s, i=-1):
     try:
         v = s.iloc[i]
         return float(v) if pd.notna(v) else None
-    except:
-        return None
+    except: return None
 
 def get_highlight_cls(val_type, val):
     if val_type == 'num':
@@ -242,12 +233,9 @@ def analyze(stock_id):
     df["MA5"] = sma(df["close"], 5)
     df["MA20"] = sma(df["close"], 20)
     df["MA60"] = sma(df["close"], 60)
-    
-    # 布林通道 (Bollinger Bands)
     df["std20"] = df["close"].rolling(20, min_periods=1).std()
     df["BB_UB"] = df["MA20"] + 2 * df["std20"]
     df["BB_LB"] = df["MA20"] - 2 * df["std20"]
-
     df["RSI"] = rsi_calc(df["close"])
     df["MACD"], df["MACD_sig"], df["MACD_hist"] = macd_calc(df["close"])
     df["K"], df["D"] = kd_calc(df["high"], df["low"], df["close"])
@@ -267,7 +255,6 @@ def analyze(stock_id):
     macd_hist_v = safe(df["MACD_hist"])
     macd_hist_prev = safe(df["MACD_hist"], -2)
 
-    # 布林通道狀態判定
     bb_status = "中性整理"
     if cl_v and bb_ub_v and bb_lb_v and ma20_v:
         if cl_v >= bb_ub_v: bb_status = "突破上軌"
@@ -275,13 +262,10 @@ def analyze(stock_id):
         elif cl_v > ma20_v: bb_status = "中軌之上"
         else: bb_status = "中軌之下"
 
-    # 法人
     i_start = (df["date"].max() - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
     pivot = pd.DataFrame()
     try:
-        inst = dl.taiwan_stock_institutional_investors(
-            stock_id=stock_id, start_date=i_start, end_date=end
-        )
+        inst = dl.taiwan_stock_institutional_investors(stock_id=stock_id, start_date=i_start, end_date=end)
         if not inst.empty:
             inst["net"] = inst["buy"] - inst["sell"]
             def cls(n):
@@ -292,32 +276,23 @@ def analyze(stock_id):
             inst["類別"] = inst["name"].apply(cls)
             p = inst.pivot_table(index="date", columns="類別", values="net", aggfunc="sum").fillna(0)
             for c in ["外資", "投信", "自營商"]:
-                if c not in p.columns:
-                    p[c] = 0
+                if c not in p.columns: p[c] = 0
             p["合計"] = p["外資"] + p["投信"] + p["自營商"]
             pivot = (p[["外資", "投信", "自營商", "合計"]] / 1000).round().astype(int)
             pivot.index = pd.to_datetime(pivot.index)
             pivot = pivot.sort_index(ascending=False)
-    except:
-        pass
+    except: pass
 
     if not pivot.empty:
-        ifor = int(pivot["外資"].iloc[0])
-        itru = int(pivot["投信"].iloc[0])
-        idal = int(pivot["自營商"].iloc[0])
-        itot = int(pivot["合計"].iloc[0])
-    else:
-        ifor = itru = idal = itot = 0
+        ifor, itru, idal, itot = int(pivot["外資"].iloc[0]), int(pivot["投信"].iloc[0]), int(pivot["自營商"].iloc[0]), int(pivot["合計"].iloc[0])
+    else: ifor = itru = idal = itot = 0
 
-    # 月營收
     yoy = mom = rev = 0
     has_rev = False
     if not is_etf:
         try:
             r_start = (df["date"].max() - pd.Timedelta(days=550)).strftime("%Y-%m-%d")
-            rv = dl.taiwan_stock_month_revenue(
-                stock_id=stock_id, start_date=r_start, end_date=end
-            )
+            rv = dl.taiwan_stock_month_revenue(stock_id=stock_id, start_date=r_start, end_date=end)
             if not rv.empty:
                 rv["date"] = pd.to_datetime(rv["date"])
                 rv = rv.sort_values("date").reset_index(drop=True)
@@ -328,10 +303,8 @@ def analyze(stock_id):
                 mom = float(lr["MoM"]) if pd.notna(lr["MoM"]) else 0
                 rev = float(lr["revenue"]) / 1e8
                 has_rev = True
-        except:
-            pass
+        except: pass
 
-    # 警示
     alerts = {"red": [], "yellow": [], "green": []}
     if rsi_v:
         if rsi_v > 80: alerts["red"].append("RSI 嚴重超買")
@@ -347,56 +320,29 @@ def analyze(stock_id):
         if vr_v > 2: alerts["yellow"].append(f"爆量 ({vr_v:.1f}x)")
         elif vr_v < 0.5: alerts["yellow"].append("量縮警示")
     if chg > 0 and itot < 0: alerts["red"].append("籌碼背離")
-    if has_rev:
-        if yoy > 30: alerts["green"].append(f"營收 YoY +{yoy:.0f}%")
-        elif yoy < -10: alerts["red"].append(f"營收 YoY {yoy:.0f}%")
 
     nr, ng = len(alerts["red"]), len(alerts["green"])
-    if nr >= 2: status = "🔴 過熱"
-    elif nr >= 1: status = "🟡 觀察"
-    elif ng >= 2: status = "🟢 健康"
-    else: status = "⚪ 中性"
+    status = "🔴 過熱" if nr >= 2 else "🟡 觀察" if nr >= 1 else "🟢 健康" if ng >= 2 else "⚪ 中性"
 
-    # 趨勢方向
-    if cl_v and ma20_v:
-        if cl_v > ma20_v > (ma60_v or 0): trend = "多頭"
-        elif cl_v < ma20_v: trend = "空頭"
-        else: trend = "盤整"
-    else:
-        trend = "盤整"
+    trend = "多頭" if cl_v and ma20_v and cl_v > ma20_v > (ma60_v or 0) else "空頭" if cl_v and ma20_v and cl_v < ma20_v else "盤整"
 
-    # MACD 狀態
     if macd_hist_v is not None and macd_hist_prev is not None:
         if macd_hist_v > 0 and macd_hist_v > macd_hist_prev: macd_status = "多頭擴張"
         elif macd_hist_v > 0 and macd_hist_v < macd_hist_prev: macd_status = "多頭縮減"
         elif macd_hist_v < 0 and macd_hist_v < macd_hist_prev: macd_status = "空頭擴張"
         elif macd_hist_v < 0 and macd_hist_v > macd_hist_prev: macd_status = "空頭縮減"
         else: macd_status = "中性"
-    else:
-        macd_status = "N/A"
+    else: macd_status = "N/A"
 
-    # 量能變化
-    vma5_v = safe(df["VMA5"])
-    vma20_v = safe(df["VMA20"])
-    if vr_v:
-        if vr_v > 1.5: vol_status = "放大"
-        elif vr_v < 0.7: vol_status = "量縮"
-        else: vol_status = "持平"
-    else:
-        vol_status = "N/A"
+    vol_status = "放大" if vr_v and vr_v > 1.5 else "量縮" if vr_v and vr_v < 0.7 else "持平"
 
     df_30 = df.tail(30)
-    high_30 = df_30["high"].max()
-    low_30 = df_30["low"].min()
-    high_recent = df["high"].max()
-    low_recent = df["low"].min()
-
-    resist_lo = round(high_30, 2)
-    resist_hi = round(high_recent, 2)
+    high_30, low_30 = df_30["high"].max(), df_30["low"].min()
+    high_recent, low_recent = df["high"].max(), df["low"].min()
+    resist_lo, resist_hi = round(high_30, 2), round(high_recent, 2)
     support_lo = round(ma20_v * 0.97, 2) if ma20_v else round(cl_v * 0.95, 2)
     support_hi = round(ma20_v, 2) if ma20_v else round(cl_v * 0.97, 2)
     
-    # 計算短線勝率 / 偏多分數 (供儀表板使用)
     score = 50
     if trend == "多頭": score += 15
     elif trend == "空頭": score -= 15
@@ -409,7 +355,7 @@ def analyze(stock_id):
     elif itot < 0: score -= 15
     score = max(0, min(100, score))
 
-    # 獲取即時報價覆寫
+    # 即時報價覆寫
     suffixes = ['.TW', '.TWO']
     for suffix in suffixes:
         try:
@@ -432,47 +378,29 @@ def analyze(stock_id):
     return {
         "name": name, "id": stock_id, "is_etf": is_etf, "has_rev": has_rev, "industry": industry_category,
         "df": df, "pivot": pivot,
-        "close": float(cl_v), "chg": chg,
-        "vol": vol_v,
-        "rsi": rsi_v, "k": k_v, "d": d_v,
-        "ma5": ma5_v, "ma20": ma20_v, "ma60": ma60_v,
+        "close": float(cl_v), "chg": chg, "vol": vol_v,
+        "rsi": rsi_v, "k": k_v, "d": d_v, "ma5": ma5_v, "ma20": ma20_v, "ma60": ma60_v,
         "bb_ub": bb_ub_v, "bb_lb": bb_lb_v, "bb_status": bb_status,
-        "macd": macd_v, "macd_sig": macd_sig_v, "macd_hist": macd_hist_v,
-        "macd_status": macd_status,
-        "vr": vr_v, "vol_status": vol_status,
-        "trend": trend,
+        "macd": macd_v, "macd_sig": macd_sig_v, "macd_hist": macd_hist_v, "macd_status": macd_status,
+        "vr": vr_v, "vol_status": vol_status, "trend": trend,
         "ifor": ifor, "itru": itru, "idal": idal, "itot": itot,
         "yoy": yoy, "mom": mom, "rev": rev,
         "status": status, "alerts": alerts, "score": score,
-        "high_30": high_30, "low_30": low_30,
-        "high_recent": high_recent, "low_recent": low_recent,
-        "resist_lo": resist_lo, "resist_hi": resist_hi,
-        "support_lo": support_lo, "support_hi": support_hi,
+        "resist_lo": resist_lo, "resist_hi": resist_hi, "support_lo": support_lo, "support_hi": support_hi,
     }, None
 
 def generate_overall_conclusion(r):
-    parts = []
-    parts.append(f"{r['name']}（{r['id']}）")
-    if r["trend"] == "多頭": parts.append("維持多頭趨勢")
-    elif r["trend"] == "空頭": parts.append("處於空頭走勢")
-    else: parts.append("處於盤整格局")
-
-    if "🔴 過熱" in r["status"]: parts.append("短線指標偏過熱")
-    elif "🟡" in r["status"]: parts.append("短線進入觀察區")
-    elif "🟢" in r["status"]: parts.append("技術面相對健康")
-    else: parts.append("技術面中性")
-
+    parts = [f"{r['name']}（{r['id']}）"]
+    parts.append("維持多頭趨勢" if r["trend"] == "多頭" else "處於空頭走勢" if r["trend"] == "空頭" else "處於盤整格局")
+    parts.append("短線指標偏過熱" if "🔴" in r["status"] else "短線進入觀察區" if "🟡" in r["status"] else "技術面相對健康" if "🟢" in r["status"] else "技術面中性")
     if r["vol_status"] == "放大": parts.append("近期量能放大")
     elif r["vol_status"] == "量縮": parts.append("近期量能縮減")
-
     if r["itot"] > 1000: parts.append("籌碼面偏多")
     elif r["itot"] < -1000: parts.append("籌碼面偏空")
-
     if r["trend"] == "多頭" and r["itot"] > 0: parts.append("有利續強")
     elif r["trend"] == "多頭" and "🔴" in r["status"]: parts.append("留意拉回風險")
     elif r["trend"] == "空頭": parts.append("反彈仍偏空")
     else: parts.append("等待方向明確")
-
     return "，".join(parts) + "。"
 
 # ============================================
@@ -480,79 +408,51 @@ def generate_overall_conclusion(r):
 # ============================================
 def call_gemini_with_retry(prompt, use_search=False, max_retries=3):
     if not gemini_keys: return "⚠️ 未設定 Gemini API Key"
-    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    last_error = None
-
     for attempt in range(max_retries):
-        api_key = random.choice(gemini_keys)
-        client = get_gemini_client_for_key(api_key)
-        if client is None: continue
-
-        model = models_to_try[0] if attempt < 2 else models_to_try[1]
+        client = get_gemini_client_for_key(random.choice(gemini_keys))
+        if not client: continue
         try:
             from google.genai import types
-            if use_search:
-                response = client.models.generate_content(
-                    model=model, contents=prompt,
-                    config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
-                )
-            else:
-                response = client.models.generate_content(model=model, contents=prompt)
-            return response.text
+            if use_search: return client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])).text
+            else: return client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
         except Exception as e:
-            err_msg = str(e)
-            last_error = err_msg
-            if any(x in err_msg for x in ["503", "429", "UNAVAILABLE", "overloaded", "RESOURCE_EXHAUSTED"]):
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                    continue
-            else: return f"❌ AI 暫時無法使用：{err_msg[:200]}"
-
-    return f"❌ AI 服務暫時繁忙（已重試 {max_retries} 次）\n\n錯誤訊息：{str(last_error)[:200]}"
+            if attempt < max_retries - 1: time.sleep(2)
+            else: return f"❌ AI 服務繁忙：{str(e)[:200]}"
+    return "❌ 發生錯誤"
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ai_analysis(stock_name, stock_id, data_summary):
-    prompt = f"""你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。
-【當前數據】\n{data_summary}\n
-【請依以下結構產出分析報告（繁體中文）】
-## 📈 技術面解讀
-## 💼 籌碼面解讀
-## 💡 短線操作建議
-## ⚠️ 風險評估
-## 🎯 中長線觀察重點
-請使用繁體中文，保持客觀，提供具體可執行的建議，加上免責聲明結尾。"""
+    prompt = f"你是台股資深分析師，請根據以下數據對「{stock_name}（{stock_id}）」做深度分析報告。\n【當前數據】\n{data_summary}\n【請依以下結構產出分析報告（繁體中文）】\n## 📈 技術面解讀\n## 💼 籌碼面解讀\n## 💡 短線操作建議\n## ⚠️ 風險評估\n請使用繁體中文，保持客觀，提供具體可執行的建議。"
     return call_gemini_with_retry(prompt, use_search=False)
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, stock_id):
-    prompt = f"""請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，產出 3-5 則最重要的新聞重點。
-每則新聞格式：\n### 📰 [新聞標題]\n- **日期**：YYYY-MM-DD\n- **重點摘要**：...\n- **影響評估**：...
-請使用繁體中文，按時間排序。"""
+    prompt = f"請幫我搜尋並整理台股「{stock_name}（{stock_id}）」最近 7 天的新聞，產出 3-5 則最重要的新聞重點。\n每則新聞格式：\n### 📰 [新聞標題]\n- **日期**：YYYY-MM-DD\n- **重點摘要**：...\n請使用繁體中文，按時間排序。"
     return call_gemini_with_retry(prompt, use_search=True)
 
 
 # ============================================
-# PDF 產生邏輯 (自動下載字型 + A4 完整匯出)
+# PDF 產生邏輯 (自動下載字型 + 解決豆腐塊)
 # ============================================
 @st.cache_resource
 def load_chinese_font():
-    """自動下載並註冊開源中文字型 NotoSansTC，解決豆腐塊問題"""
-    font_path = "NotoSansTC-Regular.ttf"
-    font_url = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
+    """下載並註冊開源中文字型 TaipeiSansTC，絕對解決豆腐塊問題"""
+    font_path = "TaipeiSansTCBeta-Regular.ttf"
+    # 使用絕對穩定的直接下載連結 (台北黑體)
+    font_url = "https://raw.githubusercontent.com/chihyangchen/Taipei-Sans-TC/master/TaipeiSansTCBeta-Regular.ttf"
     
     if not os.path.exists(font_path):
         try:
-            r = requests.get(font_url, allow_redirects=True)
-            with open(font_path, 'wb') as f:
-                f.write(r.content)
-        except Exception:
-            pass
+            urllib.request.urlretrieve(font_url, font_path)
+        except Exception as e:
+            # 如果還是失敗，退回預設字型但會是亂碼
+            return 'Helvetica'
             
     try:
-        pdfmetrics.registerFont(TTFont('NotoSansTC', font_path))
-        return 'NotoSansTC'
+        pdfmetrics.registerFont(TTFont('TaipeiSansTC', font_path))
+        return 'TaipeiSansTC'
     except Exception:
-        return 'Helvetica' # 萬一下載失敗的備用方案
+        return 'Helvetica'
 
 def create_full_pdf(r, ai_text, news_text):
     """產生 A4 完整版包含 AI 解析與新聞的 PDF 報告"""
@@ -562,7 +462,6 @@ def create_full_pdf(r, ai_text, news_text):
     
     font_name = load_chinese_font()
     
-    # 定義樣式
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(name='Title', fontName=font_name, fontSize=22, leading=26, spaceAfter=12, textColor=colors.HexColor('#5C5048'))
     subtitle_style = ParagraphStyle(name='SubTitle', fontName=font_name, fontSize=12, leading=16, spaceAfter=20, textColor=colors.HexColor('#8B7E72'))
@@ -570,11 +469,11 @@ def create_full_pdf(r, ai_text, news_text):
     h2_style = ParagraphStyle(name='H2', fontName=font_name, fontSize=14, leading=20, spaceAfter=8, textColor=colors.HexColor('#3D3833'))
     normal_style = ParagraphStyle(name='Normal', fontName=font_name, fontSize=11, leading=18, spaceAfter=8, textColor=colors.HexColor('#4A4540'))
     
-    # --- 標題區塊 ---
+    # --- 標題 ---
     elements.append(Paragraph(f"📊 台股 AI 深度分析報告：{r['name']} ({r['id']})", title_style))
     elements.append(Paragraph(f"產業：{r['industry']} | 報告生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}", subtitle_style))
     
-    # --- 關鍵數據表格 ---
+    # --- 關鍵數據 ---
     data = [
         ["即時收盤價", f"{r['close']:.2f}", "漲跌幅", f"{r['chg']:+.2f}%"],
         ["趨勢方向", r['trend'], "偏多分數", f"{r['score']} / 100"],
@@ -599,38 +498,30 @@ def create_full_pdf(r, ai_text, news_text):
     elements.append(t)
     elements.append(Spacer(1, 20))
     
-    # --- 總結區塊 ---
+    # --- 總結 ---
     elements.append(Paragraph("⭐ AI 整體結論", h1_style))
     elements.append(Paragraph(generate_overall_conclusion(r), normal_style))
     elements.append(Spacer(1, 15))
     
-    # --- Markdown 轉換小工具 ---
+    # --- Markdown 轉換器 (避開粗體字型陷阱) ---
     def parse_markdown_to_platypus(text_content):
         for line in text_content.split('\n'):
             line = line.strip()
             if not line: continue
             
-            # 將 **粗體** 轉換為 <b>標籤
-            line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+            # 重要修正：將 **粗體** 轉換為顏色標示，避免缺少粗體字型導致報錯或亂碼
+            line = re.sub(r'\*\*(.*?)\*\*', r'<font color="#C76A6A">\1</font>', line)
             
-            if line.startswith('### '):
-                elements.append(Paragraph(line[4:], h2_style))
-            elif line.startswith('## '):
-                elements.append(Paragraph(line[3:], h1_style))
-            elif line.startswith('# '):
-                elements.append(Paragraph(line[2:], h1_style))
-            elif line.startswith('- '):
-                # 簡單的項目符號排版
-                elements.append(Paragraph(f"• {line[2:]}", ParagraphStyle(name='Bullet', parent=normal_style, leftIndent=15)))
-            else:
-                elements.append(Paragraph(line, normal_style))
+            if line.startswith('### '): elements.append(Paragraph(line[4:], h2_style))
+            elif line.startswith('## '): elements.append(Paragraph(line[3:], h1_style))
+            elif line.startswith('# '): elements.append(Paragraph(line[2:], h1_style))
+            elif line.startswith('- '): elements.append(Paragraph(f"• {line[2:]}", ParagraphStyle(name='Bullet', parent=normal_style, leftIndent=15)))
+            else: elements.append(Paragraph(line, normal_style))
     
-    # --- AI 深度分析區塊 ---
     if ai_text:
         elements.append(Spacer(1, 15))
         parse_markdown_to_platypus(ai_text)
         
-    # --- 即時新聞區塊 ---
     if news_text:
         elements.append(Spacer(1, 25))
         elements.append(Paragraph("📰 近期重要新聞", h1_style))
@@ -642,44 +533,17 @@ def create_full_pdf(r, ai_text, news_text):
 
 
 # ============================================
-# 圖表與儀表組件
+# 圖表組件
 # ============================================
-MORANDI = {
-    "bg": "#FAF6F0", "grid": "#E5DDD0", "axis": "#8B7E72", "text": "#5C5048",
-    "up": "#C76A6A", "down": "#7B9E89",
-    "ma5": "#CBA365", "ma20": "#6D98AB", "ma60": "#B0889F",
-    "rsi": "#CBA365", "k": "#6D98AB", "d": "#B0889F",
-    "macd_dif": "#6D98AB", "macd_dea": "#CBA365",
-    "foreign": "#6D98AB", "trust": "#C76A6A", "dealer": "#B0889F",
-    "total": "#7B9E89", "price": "#CBA365",
-}
+MORANDI = {"bg": "#FAF6F0", "grid": "#E5DDD0", "axis": "#8B7E72", "text": "#5C5048", "up": "#C76A6A", "down": "#7B9E89", "ma5": "#CBA365", "ma20": "#6D98AB", "ma60": "#B0889F", "rsi": "#CBA365", "k": "#6D98AB", "d": "#B0889F", "macd_dif": "#6D98AB", "macd_dea": "#CBA365", "foreign": "#6D98AB", "trust": "#C76A6A", "dealer": "#B0889F", "total": "#7B9E89", "price": "#CBA365"}
 
 def plot_kline(df, name, sid, height=620):
-    fig = make_subplots(
-        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04,
-        row_heights=[0.45, 0.13, 0.21, 0.21],
-        subplot_titles=("日 K 線 (含布林通道)", "成交量", "RSI / KD", "MACD")
-    )
-    
-    # 布林通道 (疊加在 K 線上，使用半透明虛線)
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.45, 0.13, 0.21, 0.21], subplot_titles=("日 K 線 (含布林通道)", "成交量", "RSI / KD", "MACD"))
     if "BB_UB" in df.columns and df["BB_UB"].notna().any():
-        fig.add_trace(go.Scatter(x=df["date"], y=df["BB_UB"], name="布林上軌", 
-                                 line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), showlegend=False), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df["date"], y=df["BB_LB"], name="布林下軌", 
-                                 line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), 
-                                 fill='tonexty', fillcolor='rgba(139,126,114,0.05)', showlegend=False), row=1, col=1)
-
-    # 繪製 K 線
-    fig.add_trace(go.Candlestick(
-        x=df["date"], open=df["open"], high=df["high"], low=df["low"], close=df["close"],
-        increasing_line_color=MORANDI["up"], decreasing_line_color=MORANDI["down"],
-        increasing_fillcolor=MORANDI["up"], decreasing_fillcolor=MORANDI["down"], name="K"
-    ), row=1, col=1)
-    
-    # 繪製均線
-    for col, color in [("MA5", MORANDI["ma5"]), ("MA20", MORANDI["ma20"]), ("MA60", MORANDI["ma60"])]:
-        fig.add_trace(go.Scatter(x=df["date"], y=df[col], name=col, line=dict(color=color, width=1.4)), row=1, col=1)
-        
+        fig.add_trace(go.Scatter(x=df["date"], y=df["BB_UB"], name="布林上軌", line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), showlegend=False), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df["date"], y=df["BB_LB"], name="布林下軌", line=dict(color="rgba(139,126,114,0.4)", width=1, dash='dot'), fill='tonexty', fillcolor='rgba(139,126,114,0.05)', showlegend=False), row=1, col=1)
+    fig.add_trace(go.Candlestick(x=df["date"], open=df["open"], high=df["high"], low=df["low"], close=df["close"], increasing_line_color=MORANDI["up"], decreasing_line_color=MORANDI["down"], increasing_fillcolor=MORANDI["up"], decreasing_fillcolor=MORANDI["down"], name="K"), row=1, col=1)
+    for col, color in [("MA5", MORANDI["ma5"]), ("MA20", MORANDI["ma20"]), ("MA60", MORANDI["ma60"])]: fig.add_trace(go.Scatter(x=df["date"], y=df[col], name=col, line=dict(color=color, width=1.4)), row=1, col=1)
     vc = [MORANDI["up"] if c >= o else MORANDI["down"] for c, o in zip(df["close"], df["open"])]
     fig.add_trace(go.Bar(x=df["date"], y=df["volume"], marker_color=vc, name="量", showlegend=False, opacity=0.75), row=2, col=1)
     fig.add_trace(go.Scatter(x=df["date"], y=df["RSI"], name="RSI", line=dict(color=MORANDI["rsi"], width=1.6)), row=3, col=1)
@@ -687,22 +551,12 @@ def plot_kline(df, name, sid, height=620):
     fig.add_trace(go.Scatter(x=df["date"], y=df["D"], name="D", line=dict(color=MORANDI["d"], width=1.3)), row=3, col=1)
     fig.add_hline(y=80, line_dash="dash", line_color=MORANDI["up"], row=3, col=1, line_width=1, opacity=0.5)
     fig.add_hline(y=20, line_dash="dash", line_color=MORANDI["down"], row=3, col=1, line_width=1, opacity=0.5)
-    
     if df["MACD_hist"].notna().any():
         hc = [MORANDI["up"] if v >= 0 else MORANDI["down"] for v in df["MACD_hist"].fillna(0)]
         fig.add_trace(go.Bar(x=df["date"], y=df["MACD_hist"], marker_color=hc, name="MACD柱", showlegend=False, opacity=0.75), row=4, col=1)
         fig.add_trace(go.Scatter(x=df["date"], y=df["MACD"], name="DIF", line=dict(color=MORANDI["macd_dif"], width=1.4)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df["date"], y=df["MACD_sig"], name="DEA", line=dict(color=MORANDI["macd_dea"], width=1.4)), row=4, col=1)
-    
-    fig.update_layout(
-        template="plotly_white", height=height, xaxis_rangeslider_visible=False, hovermode="x unified",
-        plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"],
-        font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"),
-        margin=dict(l=10, r=10, t=30, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(255,255,255,0.7)")
-    )
-    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])], gridcolor=MORANDI["grid"], showgrid=True, linecolor=MORANDI["axis"], color=MORANDI["text"])
-    fig.update_yaxes(gridcolor=MORANDI["grid"], showgrid=True, linecolor=MORANDI["axis"], color=MORANDI["text"])
+    fig.update_layout(template="plotly_white", height=height, xaxis_rangeslider_visible=False, hovermode="x unified", plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"], font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"), margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(255,255,255,0.7)"))
     return fig
 
 def plot_inst(pivot, df):
@@ -710,140 +564,67 @@ def plot_inst(pivot, df):
     rec = pivot.head(10).sort_index()
     pr = df[df["date"].isin(pd.to_datetime(rec.index))][["date", "close"]].sort_values("date")
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    for col, color in [("外資", MORANDI["foreign"]), ("投信", MORANDI["trust"]), ("自營商", MORANDI["dealer"]), ("合計", MORANDI["total"])]:
-        fig.add_trace(go.Bar(x=rec.index, y=rec[col], name=col, marker_color=color, opacity=0.85), secondary_y=False)
+    for col, color in [("外資", MORANDI["foreign"]), ("投信", MORANDI["trust"]), ("自營商", MORANDI["dealer"]), ("合計", MORANDI["total"])]: fig.add_trace(go.Bar(x=rec.index, y=rec[col], name=col, marker_color=color, opacity=0.85), secondary_y=False)
     fig.add_trace(go.Scatter(x=pr["date"], y=pr["close"], name="股價", line=dict(color=MORANDI["price"], width=2.5), marker=dict(size=8), mode="lines+markers"), secondary_y=True)
-    fig.update_layout(
-        template="plotly_white", barmode="group", height=340, plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"],
-        font=dict(color=MORANDI["text"], family="Arial, 'Noto Sans TC', sans-serif"),
-        margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(255,255,255,0.7)")
-    )
-    fig.update_yaxes(title_text="法人(張)", secondary_y=False, gridcolor=MORANDI["grid"], color=MORANDI["text"])
-    fig.update_yaxes(title_text="股價(元)", secondary_y=True, gridcolor=MORANDI["grid"], color=MORANDI["text"])
-    fig.update_xaxes(gridcolor=MORANDI["grid"], color=MORANDI["text"])
+    fig.update_layout(template="plotly_white", barmode="group", height=340, plot_bgcolor=MORANDI["bg"], paper_bgcolor=MORANDI["bg"], font=dict(color=MORANDI["text"]), margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
     return fig
 
 def plot_morandi_gauge(score):
-    """產出帶有真實指針箭頭的儀表板 (使用 shapes 避開版本衝突)"""
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = score,
-        number = {'font': {'size': 36, 'color': '#3D3833'}},
-        gauge = {
-            'axis': {'range': [0, 100], 'visible': False},
-            'bar': {'color': "rgba(0,0,0,0)"},
-            'steps': [
-                {'range': [0, 40], 'color': "#DBE8E0"},  # 綠色 (偏弱)
-                {'range': [40, 60], 'color': "#F5EFD9"}, # 黃色 (中性)
-                {'range': [60, 100], 'color': "#F5DCDC"} # 紅色 (偏多)
-            ],
-        }
-    ))
-    
-    # 計算指針位置
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=score, number={'font': {'size': 36, 'color': '#3D3833'}}, gauge={'axis': {'range': [0, 100], 'visible': False}, 'bar': {'color': "rgba(0,0,0,0)"}, 'steps': [{'range': [0, 40], 'color': "#DBE8E0"}, {'range': [40, 60], 'color': "#F5EFD9"}, {'range': [60, 100], 'color': "#F5DCDC"}]}))
     theta = (1 - score / 100) * np.pi
-    r_needle = 0.38
-    x_head = 0.5 + r_needle * np.cos(theta)
-    y_head = 0.25 + r_needle * np.sin(theta)
-    
-    # 畫出指針
-    fig.update_layout(
-        shapes=[
-            dict(
-                type="line",
-                x0=0.5, y0=0.25,
-                x1=x_head, y1=y_head,
-                line=dict(color="#5C5048", width=5),
-                xref="paper", yref="paper"
-            )
-        ],
-        height=180, 
-        margin=dict(l=15, r=15, t=10, b=10), 
-        paper_bgcolor="rgba(0,0,0,0)", 
-        font=dict(family="Arial, 'Noto Sans TC'")
-    )
+    fig.update_layout(shapes=[dict(type="line", x0=0.5, y0=0.25, x1=0.5 + 0.38 * np.cos(theta), y1=0.25 + 0.38 * np.sin(theta), line=dict(color="#5C5048", width=5), xref="paper", yref="paper")], height=180, margin=dict(l=15, r=15, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
 def render_inst_card(label, value):
     cls, sign = ("inst-value-up", "+") if value > 0 else ("inst-value-down", "") if value < 0 else ("inst-value-flat", "")
     return f'<div class="inst-card"><div class="inst-label">{label}</div><div class="{cls}">{sign}{value:,}</div></div>'
-
 def render_pct_card(label, pct, suffix="%"):
     cls = "inst-value-up" if pct > 0 else "inst-value-down" if pct < 0 else "inst-value-flat"
     return f'<div class="inst-card"><div class="inst-label">{label}</div><div class="{cls}">{pct:+.2f}{suffix}</div></div>'
 
 
 # ============================================
-# 主畫面
+# 主畫面 UI
 # ============================================
 st.title("📊 台股 AI 個股分析")
-st.caption(f"🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞 · FinMind {finmind_token_count} token / Gemini {len(gemini_keys)} key")
+st.caption(f"🤖 整合技術面 / 籌碼面 / 基本面 / Gemini AI 解讀 / 即時新聞 · FinMind {finmind_token_count} token")
 
 ic1, ic2 = st.columns([4, 1])
-with ic1:
-    sid = st.text_input("stock_input", placeholder="輸入股票代號，例如 2330、0050", label_visibility="collapsed", key="stock_input")
-with ic2:
-    go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
+with ic1: sid = st.text_input("stock_input", placeholder="輸入股票代號，例如 2330、0050", label_visibility="collapsed").strip().upper()
+with ic2: go_btn = st.button("🔍 開始分析", type="primary", use_container_width=True)
 
 st.divider()
 
-if not (go_btn and sid.strip()):
-    if not sid.strip():
+if not (go_btn and sid):
+    if not sid:
         st.info("👆 請輸入股票代號，按「開始分析」")
-        st.markdown("""
-        ### 🎯 三種顯示模式
-        - 📊 **詳細模式**：完整數據表格 + K 線圖 + 法人柱狀圖（適合深入研究）
-        - 🎯 **7 大重點速覽**：6 區塊重點圖卡 + 整體結論（適合快速判讀）
-        - 🖥️ **旗艦全景儀表板**：參考專業看盤軟體的高密度戰情室（看盤必備）
-        """)
         st.stop()
-
-if not sid.strip():
-    st.warning("請輸入股票代號")
-    st.stop()
-
-sid = sid.strip().upper()
 
 with st.spinner(f"⚙️ 分析 {sid} 中..."):
     r, err = analyze(sid)
 
-if err or r is None:
+if err or not r:
     st.error(f"❌ {err or '分析失敗'}")
     st.stop()
 
-# 動態判斷結論顏色
 conclusion_color = "#C76A6A" if r['score'] >= 60 else "#7B9E89" if r['score'] <= 40 else "#5C5048"
 
-# === 🌟 導出與分享功能區塊 (改版：兩段式自動呼叫 AI) ===
+# === 🌟 導出與分享功能區塊 ===
 st.markdown("### 📤 導出與分享")
 c_exp1, c_exp2, c_exp3 = st.columns([1, 1, 2])
 
 with c_exp1:
-    # 兩段式下載：先按按鈕觸發運算，運算完才顯示真正的 Download Button
     if st.button("📝 產生 A4 完整 AI 報告 (PDF)", use_container_width=True, key="btn_gen_pdf"):
-        with st.spinner("🔄 正在整合數據、呼叫 AI 與搜尋最新新聞，產生報告中..."):
-            # 準備給 AI 的摘要資料
+        with st.spinner("🔄 正在下載字型、呼叫 AI 與整合報告中，請稍候..."):
             summary = f"- 收盤價：{r['close']:.2f}\n- 成交量：{r['vol']:,} 張\n- 技術指標：RSI={r['rsi']}, MACD={r['macd']}\n- 法人籌碼：合計 {r['itot']:+,} 張\n- 狀態：{r['status']}"
-            
-            # 呼叫 AI 解析與新聞
             ai_text = get_ai_analysis(r["name"], r["id"], summary)
             news_text = get_news(r["name"], r["id"])
-            
-            # 產生 PDF (包含中文字型)
             pdf_data = create_full_pdf(r, ai_text, news_text)
             st.session_state[f'pdf_buffer_{sid}'] = pdf_data
-            st.success("✅ 報告產生完畢！請點擊下方按鈕下載")
+            st.success("✅ 報告產生完畢！請點擊下方按鈕下載。")
 
-    # 如果已經產生好，就顯示下載按鈕
     if f'pdf_buffer_{sid}' in st.session_state:
-        st.download_button(
-            label="⬇️ 點此下載 PDF 報告", 
-            data=st.session_state[f'pdf_buffer_{sid}'], 
-            file_name=f"{sid}_{r['name']}_完整分析報告.pdf", 
-            mime="application/pdf", 
-            use_container_width=True
-        )
+        st.download_button(label="⬇️ 下載 PDF 報告", data=st.session_state[f'pdf_buffer_{sid}'], file_name=f"{sid}_{r['name']}_分析報告.pdf", mime="application/pdf", use_container_width=True)
 
 with c_exp2:
     share_text = f"【台股AI分析】{r['name']} ({r['id']})\n股價：{r['close']:.2f} ({r['chg']:+.2f}%)\n趨勢：{r['trend']}\n分數：{r['score']}\n結論：{generate_overall_conclusion(r)}"
@@ -854,325 +635,61 @@ with c_exp3:
 st.divider()
 
 # ============================================
-# 模式切換（3個 Tabs）
+# 模式切換
 # ============================================
 mode_tab1, mode_tab2, mode_tab3 = st.tabs(["📊 詳細模式", "🎯 7 大重點速覽", "🖥️ 旗艦全景儀表板"])
 
-# --------------------------------------------
-# 模式 1：詳細模式
-# --------------------------------------------
 with mode_tab1:
     st.subheader(f"{r['name']} ({r['id']})  {r['status']}")
     chg_color = "#C76A6A" if r["chg"] >= 0 else "#7B9E89"
-    chg_arrow = "▲" if r["chg"] >= 0 else "▼"
-
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="inst-card"><div class="inst-label">收盤價</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["close"]:.2f}</div><div style="color:{chg_color};font-size:14px;font-weight:600;margin-top:4px;">{chg_arrow} {r["chg"]:+.2f}%</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="inst-card"><div class="inst-label">成交量</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["vol"]:,}</div><div style="color:#8B7E72;font-size:13px;margin-top:4px;">張</div></div>', unsafe_allow_html=True)
-    with c3:
-        rsi_color = "#C76A6A" if r["rsi"] and r["rsi"] > 70 else "#7B9E89" if r["rsi"] and r["rsi"] < 30 else "#3D3833"
-        rsi_label = "(超買)" if r["rsi"] and r["rsi"] > 70 else "(超賣)" if r["rsi"] and r["rsi"] < 30 else ""
-        rsi_disp = f"{r['rsi']:.2f}" if r["rsi"] else "N/A"
-        st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{rsi_color};font-size:28px;font-weight:700;">{rsi_disp}</div><div style="color:{rsi_color};font-size:13px;margin-top:4px;">{rsi_label}</div></div>', unsafe_allow_html=True)
-    with c4:
-        st.markdown(f'<div class="inst-card"><div class="inst-label">更新時間</div><div style="color:#3D3833;font-size:22px;font-weight:700;margin-top:6px;">{datetime.now().strftime("%m/%d %H:%M")}</div></div>', unsafe_allow_html=True)
+    with c1: st.markdown(f'<div class="inst-card"><div class="inst-label">收盤價</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["close"]:.2f}</div><div style="color:{chg_color};font-size:14px;font-weight:600;">{"▲" if r["chg"]>=0 else "▼"} {r["chg"]:+.2f}%</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="inst-card"><div class="inst-label">成交量</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["vol"]:,}</div><div style="color:#8B7E72;font-size:13px;">張</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="inst-card"><div class="inst-label">RSI(14)</div><div style="color:{"#C76A6A" if r["rsi"] and r["rsi"]>70 else "#7B9E89" if r["rsi"] and r["rsi"]<30 else "#3D3833"};font-size:28px;font-weight:700;">{r["rsi"]:.2f}</div></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="inst-card"><div class="inst-label">更新時間</div><div style="color:#3D3833;font-size:22px;font-weight:700;">{datetime.now().strftime("%H:%M")}</div></div>', unsafe_allow_html=True)
 
-    all_alerts = [("red", a) for a in r["alerts"]["red"]] + [("yellow", a) for a in r["alerts"]["yellow"]] + [("green", a) for a in r["alerts"]["green"]]
-    if all_alerts:
-        chips_html = "".join([f'<span style="display:inline-block;background:{("#F5DCDC" if t=="red" else "#F5EFD9" if t=="yellow" else "#DBE8E0")};color:{("#C76A6A" if t=="red" else "#A88838" if t=="yellow" else "#5C8169")};padding:6px 14px;border-radius:16px;margin:3px 5px 3px 0;font-size:13px;font-weight:500;">{"🔴" if t=="red" else "🟡" if t=="yellow" else "🟢"} {txt}</span>' for t, txt in all_alerts])
-        st.markdown(f"<div style='margin-top:14px;'>{chips_html}</div>", unsafe_allow_html=True)
-
-    st.divider()
     t1, t2, t3, t4, t5 = st.tabs(["📈 技術面", "💼 籌碼面", "📊 基本面", "🤖 AI 智能解讀", "📰 即時新聞"])
-
-    with t1:
-        st.markdown("### 完整 K 線圖")
-        st.plotly_chart(plot_kline(r["df"], r["name"], r["id"]), use_container_width=True, config={"displayModeBar": False})
+    with t1: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"]), use_container_width=True)
     with t2:
         cc = st.columns(4)
         cc[0].markdown(render_inst_card("外資", r["ifor"]), unsafe_allow_html=True)
         cc[1].markdown(render_inst_card("投信", r["itru"]), unsafe_allow_html=True)
         cc[2].markdown(render_inst_card("自營商", r["idal"]), unsafe_allow_html=True)
         cc[3].markdown(render_inst_card("合計", r["itot"]), unsafe_allow_html=True)
-        if not r["pivot"].empty:
-            st.plotly_chart(plot_inst(r["pivot"], r["df"]), use_container_width=True, config={"displayModeBar": False})
+        if not r["pivot"].empty: st.plotly_chart(plot_inst(r["pivot"], r["df"]), use_container_width=True)
     with t3:
         if r["has_rev"]:
             bc = st.columns(3)
-            with bc[0]: st.markdown(f'<div class="inst-card"><div class="inst-label">最新月營收</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["rev"]:.2f}</div><div style="color:#8B7E72;font-size:13px;margin-top:4px;">億元</div></div>', unsafe_allow_html=True)
+            with bc[0]: st.markdown(f'<div class="inst-card"><div class="inst-label">最新月營收</div><div style="color:#3D3833;font-size:28px;font-weight:700;">{r["rev"]:.2f} 億</div></div>', unsafe_allow_html=True)
             with bc[1]: st.markdown(render_pct_card("YoY 年增率", r["yoy"]), unsafe_allow_html=True)
             with bc[2]: st.markdown(render_pct_card("MoM 月增率", r["mom"]), unsafe_allow_html=True)
-        else: st.info("📌 此標的為 ETF 或興櫃，無月營收資料")
     with t4:
-        if st.button("🚀 產生 AI 分析報告", type="primary", key="ai_btn_detail"):
-            with st.spinner("AI 正在思考中..."):
-                summary = f"- 收盤價：{r['close']:.2f}\n- 成交量：{r['vol']:,} 張\n- 技術指標：RSI={r['rsi']}, MACD={r['macd']}\n- 法人籌碼：合計 {r['itot']:+,} 張\n- 狀態：{r['status']}"
-                st.markdown(get_ai_analysis(r["name"], r["id"], summary))
+        if st.button("🚀 產生 AI 分析報告", type="primary"):
+            with st.spinner("AI 思考中..."): st.markdown(get_ai_analysis(r["name"], r["id"], f"收盤:{r['close']}, 漲跌:{r['chg']}%, 籌碼:{r['itot']}"))
     with t5:
-        if st.button("🔍 搜尋最新新聞", type="primary", key="news_btn_detail"):
-            with st.spinner("正在搜尋新聞..."): st.markdown(get_news(r["name"], r["id"]))
+        if st.button("🔍 搜尋最新新聞", type="primary"):
+            with st.spinner("搜尋中..."): st.markdown(get_news(r["name"], r["id"]))
 
-
-# --------------------------------------------
-# 模式 2：7 大重點速覽 (套用 Highlight)
-# --------------------------------------------
 with mode_tab2:
-    chg_arrow_top = "▲" if r["chg"] >= 0 else "▼"
-    st.markdown(f"""
-    <div class="overview-header">
-        <div class="overview-title">{r['name']} {r['id']} ｜ 7 大重點速覽</div>
-        <div class="overview-subtitle">Q版講師帶你看懂：{r['trend']}趨勢、技術指標、籌碼分析</div>
-        <div class="overview-pills">
-            <span class="overview-pill"><span style="color:#8B7E72;">收盤</span><span style="color:#3D3833;font-weight:700;font-size:16px;margin-left:6px;">{r['close']:.2f}</span></span>
-            <span class="{'overview-pill-red' if r['chg'] >= 0 else 'overview-pill-green'}">{chg_arrow_top} {r['chg']:+.2f}%</span>
-            <span class="overview-pill"><span style="color:#8B7E72;">成交量</span><span style="color:#3D3833;font-weight:700;margin-left:6px;">{r['vol']:,}</span><span style="color:#8B7E72;font-size:11px;margin-left:2px;">張</span></span>
-            <span class="overview-pill"><span style="color:#8B7E72;">狀態</span><span style="color:#B89243;font-weight:600;margin-left:6px;">{r['status']}</span></span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 取得 highlight classes
-    cls_chg = get_highlight_cls('num', r["chg"])
-    cls_trend = get_highlight_cls('trend', r["trend"])
-    cls_macd = get_highlight_cls('macd', r["macd_status"])
-    cls_itot = get_highlight_cls('num', r["itot"])
-
+    st.markdown(f'<div class="overview-header"><div class="overview-title">{r["name"]} {r["id"]} ｜ 7 大重點速覽</div><div class="overview-pills"><span class="overview-pill"><span style="color:#8B7E72;">收盤</span><span style="color:#3D3833;font-weight:700;margin-left:6px;">{r["close"]:.2f}</span></span><span class="{"overview-pill-red" if r["chg"]>=0 else "overview-pill-green"}">{"▲" if r["chg"]>=0 else "▼"} {r["chg"]:+.2f}%</span></div></div>', unsafe_allow_html=True)
     row1c1, row1c2, row1c3 = st.columns(3)
-    with row1c1:
-        st.markdown(f"""<div class="section-card"><div class="section-title">📈 股價表現</div>
-        <div class="kv-row"><span class="kv-label">收盤</span><span class="{cls_chg}">{r["close"]:.2f}</span></div>
-        <div class="kv-row"><span class="kv-label">漲跌</span><span class="{cls_chg}">{r["chg"]:+.2f}%</span></div>
-        </div>""", unsafe_allow_html=True)
-    with row1c2:
-        st.markdown(f"""<div class="section-card"><div class="section-title">📊 趨勢與均線</div>
-        <div class="kv-row"><span class="kv-label">趨勢方向</span><span class="{cls_trend}">{r["trend"]}</span></div>
-        </div>""", unsafe_allow_html=True)
-    with row1c3:
-        rsi_disp_tab2 = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
-        st.markdown(f"""<div class="section-card"><div class="section-title">💹 技術指標</div>
-        <div class="kv-row"><span class="kv-label">RSI(14)</span><span class="kv-value">{rsi_disp_tab2}</span></div>
-        <div class="kv-row"><span class="kv-label">MACD 狀態</span><span class="{cls_macd}">{r["macd_status"]}</span></div>
-        </div>""", unsafe_allow_html=True)
+    with row1c1: st.markdown(f'<div class="section-card"><div class="section-title">📈 股價表現</div><div class="kv-row"><span class="kv-label">收盤</span><span class="{get_highlight_cls("num", r["chg"])}">{r["close"]:.2f}</span></div><div class="kv-row"><span class="kv-label">漲跌</span><span class="{get_highlight_cls("num", r["chg"])}">{r["chg"]:+.2f}%</span></div></div>', unsafe_allow_html=True)
+    with row1c2: st.markdown(f'<div class="section-card"><div class="section-title">📊 趨勢與均線</div><div class="kv-row"><span class="kv-label">趨勢方向</span><span class="{get_highlight_cls("trend", r["trend"])}">{r["trend"]}</span></div></div>', unsafe_allow_html=True)
+    with row1c3: st.markdown(f'<div class="section-card"><div class="section-title">👥 籌碼分析</div><div class="kv-row"><span class="kv-label">法人合計</span><span class="{get_highlight_cls("num", r["itot"])}">{r["itot"]:+,} 張</span></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="conclusion-box"><div class="conclusion-title">⭐ 整體結論</div><div class="conclusion-text" style="color: {conclusion_color};">{generate_overall_conclusion(r)}</div></div>', unsafe_allow_html=True)
 
-    row2c1, row2c2, row2c3 = st.columns(3)
-    with row2c1:
-        st.markdown(f"""<div class="section-card"><div class="section-title">📦 量能與型態</div>
-        <div class="kv-row"><span class="kv-label">量比</span><span class="kv-value">{r["vr"]:.2f}x</span></div>
-        <div class="kv-row"><span class="kv-label">量能變化</span><span class="kv-value">{r["vol_status"]}</span></div>
-        </div>""", unsafe_allow_html=True)
-    with row2c2:
-        st.markdown(f"""<div class="section-card"><div class="section-title">👥 籌碼分析</div>
-        <div class="kv-row"><span class="kv-label">法人合計</span><span class="{cls_itot}">{r["itot"]:+,} 張</span></div>
-        </div>""", unsafe_allow_html=True)
-    with row2c3:
-        st.markdown(f"""<div class="section-card"><div class="section-title">🎯 關鍵價位</div>
-        <div class="kv-row"><span class="kv-label">壓力區</span><span class="kv-value-up">{r["resist_lo"]:.2f} ~ {r["resist_hi"]:.2f}</span></div>
-        <div class="kv-row"><span class="kv-label">支撐區</span><span class="kv-value-down">{r["support_lo"]:.2f} ~ {r["support_hi"]:.2f}</span></div>
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="conclusion-box" style="padding: 18px 24px;">
-        <div class="conclusion-title" style="font-size: 16px;">⭐ 整體結論</div>
-        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# --------------------------------------------
-# 模式 3：🖥️ 旗艦全景儀表板 (套用 Highlight)
-# --------------------------------------------
 with mode_tab3:
-    chg_color = '#C76A6A' if r['chg'] >= 0 else '#7B9E89'
-    st.markdown(f"""
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #E5DDD0; padding-bottom:8px; margin-bottom:12px;">
-        <div>
-            <span style="font-size:24px; font-weight:700; color:#5C5048; letter-spacing:1px;">{r['name']} ({r['id']})</span>
-            <span style="font-size:13px; font-weight:600; background:#FAF6F0; color:#8B6F47; padding:4px 8px; border-radius:4px; margin-left:12px; border:1px solid #D4CABB;">{r['industry']}</span>
-        </div>
-        <div style="text-align:right;">
-            <span style="font-size:14px; font-weight:600; color:#8B7E72; margin-right:8px;">日 K 線</span>
-            <span style="font-size:28px; font-weight:800; color:{chg_color};">{r['close']:.2f}</span>
-            <span style="font-size:16px; font-weight:700; color:{chg_color}; margin-left:8px;">{r['chg']:+.2f}%</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
+    st.markdown(f'<div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #E5DDD0; padding-bottom:8px; margin-bottom:12px;"><div><span style="font-size:24px; font-weight:700; color:#5C5048;">{r["name"]} ({r["id"]})</span></div><div style="text-align:right;"><span style="font-size:28px; font-weight:800; color:{chg_color};">{r["close"]:.2f}</span><span style="font-size:16px; font-weight:700; color:{chg_color}; margin-left:8px;">{r["chg"]:+.2f}%</span></div></div>', unsafe_allow_html=True)
     top_left, top_right = st.columns([6, 4])
-    with top_left:
-        st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=580), use_container_width=True, config={"displayModeBar": False})
-
+    with top_left: st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=580), use_container_width=True)
     with top_right:
         r1_c1, r1_c2 = st.columns(2)
-        with r1_c1:
-            trend_val = f"<span class='{get_highlight_cls('trend', r['trend'])}'>{r['trend']}</span>"
-            if r['ma5'] and r['ma20'] and r['ma60']:
-                if r['ma5'] > r['ma20'] > r['ma60']: ma_str = "多週期排列"
-                elif r['ma5'] < r['ma20'] < r['ma60']: ma_str = "空頭排列"
-                else: ma_str = "均線糾結"
-            else: ma_str = "資料不足"
-            ma_val = f"<span class='{get_highlight_cls('ma', ma_str)}'>{ma_str}</span>"
-            
-            if r['k'] and r['d']:
-                if r['k'] > 80 and r['d'] > 80: kd_str = "高檔鈍化"
-                elif r['k'] < 20 and r['d'] < 20: kd_str = "低檔鈍化"
-                elif r['k'] > r['d']: kd_str = "偏多交叉"
-                else: kd_str = "偏空交叉"
-            else: kd_str = "中立"
-            kd_val = f"<span class='{get_highlight_cls('kd', kd_str)}'>{kd_str}</span>"
-            
-            macd_val = f"<span class='{get_highlight_cls('macd', r['macd_status'])}'>{r['macd_status']}</span>"
-            vol_val = f"<span class='{get_highlight_cls('vol', r['vol_status'])}'>{r['vol_status']}</span>"
-            
-            if r['chg'] > 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價量齊揚"
-            elif r['chg'] < 0 and r['vr'] and r['vr'] > 1.2: pv_str = "價跌量增"
-            elif r['chg'] < 0 and r['vr'] and r['vr'] < 0.8: pv_str = "價跌量縮"
-            elif r['chg'] > 0 and r['vr'] and r['vr'] < 0.8: pv_str = "價漲量縮"
-            else: pv_str = "無明顯背離"
-            pv_val = f"<span class='{get_highlight_cls('pv', pv_str)}'>{pv_str}</span>"
-            
-            st.markdown(f"""
-            <div class="section-card">
-                <div class="section-title">📊 技術分析總覽</div>
-                <div class="kv-row"><span class="kv-label">↗ 趨勢方向</span>{trend_val}</div>
-                <div class="kv-row"><span class="kv-label">★ MA 狀態</span>{ma_val}</div>
-                <div class="kv-row"><span class="kv-label">∿ KD 指標</span>{kd_val}</div>
-                <div class="kv-row"><span class="kv-label">📶 MACD</span>{macd_val}</div>
-                <div class="kv-row"><span class="kv-label">📦 成交量</span>{vol_val}</div>
-                <div class="kv-row"><span class="kv-label">⚖ 量價關係</span>{pv_val}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        with r1_c1: st.markdown(f'<div class="section-card"><div class="section-title">📊 技術分析</div><div class="kv-row"><span class="kv-label">↗ 趨勢</span><span class="{get_highlight_cls("trend", r["trend"])}">{r["trend"]}</span></div><div class="kv-row"><span class="kv-label">📶 MACD</span><span class="{get_highlight_cls("macd", r["macd_status"])}">{r["macd_status"]}</span></div><div class="kv-row"><span class="kv-label">📦 量能</span><span class="{get_highlight_cls("vol", r["vol_status"])}">{r["vol_status"]}</span></div></div>', unsafe_allow_html=True)
+        with r1_c2: st.markdown(f'<div class="section-card"><div class="section-title">👥 籌碼動向</div><div class="kv-row"><span class="kv-label">外資</span><span class="{get_highlight_cls("num", r["ifor"])}">{r["ifor"]:+,}</span></div><div class="kv-row"><span class="kv-label">投信</span><span class="{get_highlight_cls("num", r["itru"])}">{r["itru"]:+,}</span></div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title">🎯 偏多分數</div>', unsafe_allow_html=True)
+        st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-            if r['bb_ub']:
-                bb_val = f"<span class='{get_highlight_cls('bb', r['bb_status'])}'>{r['bb_status']}</span>"
-                st.markdown(f"""
-                <div class="section-card" style="margin-top:10px;">
-                    <div class="section-title">📉 布林通道 (20,2)</div>
-                    <div class="kv-row"><span class="kv-label">上軌 (壓力)</span><span class="kv-value-up">{r['bb_ub']:.2f}</span></div>
-                    <div class="kv-row"><span class="kv-label">中軌 (月線)</span><span class="kv-value-yellow">{r['ma20']:.2f}</span></div>
-                    <div class="kv-row"><span class="kv-label">下軌 (支撐)</span><span class="kv-value-down">{r['bb_lb']:.2f}</span></div>
-                    <div class="kv-row"><span class="kv-label">通道狀態</span>{bb_val}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-        with r1_c2:
-            rev_val = f"<span class='{get_highlight_cls('num', r['yoy'])}'>{r['yoy']:+.2f}%</span>" if r['has_rev'] else "N/A"
-            st.markdown(f"""
-            <div class="section-card" style="margin-bottom:10px;">
-                <div class="section-title">🏢 基本概況</div>
-                <div class="kv-row"><span class="kv-label">所屬產業</span><span class="kv-value">{r['industry']}</span></div>
-                <div class="kv-row"><span class="kv-label">單月營收</span><span class="kv-value">{r['rev']:.2f} 億</span></div>
-                <div class="kv-row"><span class="kv-label">營收年增</span>{rev_val}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            ifor_val = f"<span class='{get_highlight_cls('num', r['ifor'])}'>{r['ifor']:+,} 張</span>"
-            itru_val = f"<span class='{get_highlight_cls('num', r['itru'])}'>{r['itru']:+,} 張</span>"
-            itot_val = f"<span class='{get_highlight_cls('num', r['itot'])}'>{r['itot']:+,} 張</span>"
-            st.markdown(f"""
-            <div class="section-card">
-                <div class="section-title">👥 籌碼分析</div>
-                <div class="kv-row"><span class="kv-label">外資動向</span>{ifor_val}</div>
-                <div class="kv-row"><span class="kv-label">投信動向</span>{itru_val}</div>
-                <div class="kv-row" style="background:#F5EFD9; padding:4px; border-radius:4px;"><span class="kv-label" style="color:#A88838;font-weight:600;">合計買賣</span>{itot_val}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        r2_c1, r2_c2, r2_c3 = st.columns([1, 1.2, 1])
-        with r2_c1:
-            risk = "high" if "🔴" in r['status'] else "mid" if "🟡" in r['status'] else "low"
-            op_h = 1 if risk=="high" else 0.2
-            op_m = 1 if risk=="mid" else 0.2
-            op_l = 1 if risk=="low" else 0.2
-            st.markdown(f"""
-            <div class="section-card" style="text-align:center;">
-                <div class="section-title">🚦 短線風險</div>
-                <div style="opacity:{op_h}; color:#C76A6A; font-weight:700; padding:4px 0;">🔴 高風險</div>
-                <div style="opacity:{op_m}; color:#B89243; font-weight:700; padding:4px 0;">🟡 需觀察</div>
-                <div style="opacity:{op_l}; color:#5C8169; font-weight:700; padding:4px 0;">🟢 低風險</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with r2_c2:
-            st.markdown('<div class="section-card" style="padding:4px;"><div class="section-title" style="margin-bottom:0;">🎯 偏多分數</div>', unsafe_allow_html=True)
-            st.plotly_chart(plot_morandi_gauge(r['score']), use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
-        with r2_c3:
-            st.markdown(f"""
-            <div class="section-card">
-                <div class="section-title">🎯 關鍵價位</div>
-                <div style="text-align:center; padding-bottom:8px; border-bottom:1px solid #E5DDD0;">
-                    <div style="color:#C76A6A; font-size:12px;">壓力區</div>
-                    <div style="font-weight:700; font-size:18px;">{r['resist_hi']:.2f}</div>
-                </div>
-                <div style="text-align:center; padding-top:8px;">
-                    <div style="color:#7B9E89; font-size:12px;">支撐區</div>
-                    <div style="font-weight:700; font-size:18px;">{r['support_hi']:.2f}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    bot_c1, bot_c2, bot_c3 = st.columns([2.5, 2.5, 5])
-    
-    with bot_c1:
-        st.markdown(f"""
-        <div class="section-card">
-            <div class="section-title">🔎 型態與訊號</div>
-            <div class="bullet-item">MA均線：{'多頭' if r['ma5'] and r['ma20'] and r['ma5']>r['ma20'] else '偏空'}排列</div>
-            <div class="bullet-item">RSI狀態：{'超買' if r['rsi'] and r['rsi']>70 else '超賣' if r['rsi'] and r['rsi']<30 else '中立'}</div>
-            <div class="bullet-item">MACD柱：{r['macd_status']}</div>
-            <div class="bullet-item">法人籌碼：{'偏多' if r['itot']>0 else '偏空'}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with bot_c2:
-        st.markdown(f"""
-        <div class="section-card">
-            <div class="section-title">🗓 多週期概覽 (MA)</div>
-            <div class="kv-row"><span class="kv-label">日 K 級別</span><span class="{'kv-value-up' if r['trend']=='多頭' else 'kv-value-down'}">{r['trend']}</span></div>
-            <div class="kv-row"><span class="kv-label">短線位階</span><span class="kv-value-yellow">觀望 20 日線</span></div>
-            <div class="kv-row"><span class="kv-label">中線位階</span><span class="kv-value-cyan">季線 {r['ma60']:.2f}</span></div>
-            <div class="kv-row"><span style="color:#8B7E72; font-size:12px; margin-top:4px;">*位階依 MA 均線判定</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with bot_c3:
-        c = r['close']
-        res = r['resist_hi']
-        sup = r['support_hi']
-        st.markdown(f"""
-        <div class="section-card" style="background: #F5EFE5; border: 1px solid #D4CABB;">
-            <div class="section-title" style="margin-bottom:8px;">📝 隔日操作劇本 (程式推演僅供參考)</div>
-            <div style="display:flex; gap:10px;">
-                <div class="scenario-box" style="flex:1;">
-                    <div class="scenario-title" style="background:#FBEDED; color:#C76A6A;">① 開高 (強勢)</div>
-                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
-                        進場：{(c*1.01):.2f}<br>停損：{(c*0.99):.2f}<br>目標：{res:.2f}
-                    </div>
-                </div>
-                <div class="scenario-box" style="flex:1;">
-                    <div class="scenario-title" style="background:#F5EFD9; color:#A88838;">② 震盪 (盤整)</div>
-                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
-                        進場：{c:.2f}<br>停損：{sup:.2f}<br>目標：{res:.2f}
-                    </div>
-                </div>
-                <div class="scenario-box" style="flex:1;">
-                    <div class="scenario-title" style="background:#EAF1EC; color:#5C8169;">③ 開低 (弱勢)</div>
-                    <div style="font-size:13px; line-height:1.6; color:#5C5048;">
-                        進場：{(c*0.98):.2f}<br>停損：{(sup*0.98):.2f}<br>目標：{c:.2f}
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="conclusion-box" style="padding: 18px 24px;">
-        <div class="conclusion-title" style="font-size: 16px;">⭐ 整體結論</div>
-        <div class="conclusion-text" style="color: {conclusion_color}; font-size: 20px; font-weight: 800;">{generate_overall_conclusion(r)}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.divider()
-st.caption(f"📊 資料來源：FinMind · 🤖 AI：Google Gemini 2.5 Flash · 最後分析：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-st.caption("⚠️ 本網站僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。")
+    bot_c1, bot_c2 = st.columns([5, 5])
+    with bot_c1: st.markdown(f'<div class="section-card"><div class="section-title">🗓 多週期</div><div class="kv-row"><span class="kv-label">中線季線</span><span class="kv-value-cyan">{r["ma60"]:.2f}</span></div></div>', unsafe_allow_html=True)
+    with bot_c2: st.markdown(f'<div class="section-card"><div class="section-title">🎯 關鍵價位</div><div class="kv-row"><span class="kv-label">壓力區</span><span class="kv-value-up">{r["resist_hi"]:.2f}</span></div><div class="kv-row"><span class="kv-label">支撐區</span><span class="kv-value-down">{r["support_hi"]:.2f}</span></div></div>', unsafe_allow_html=True)
