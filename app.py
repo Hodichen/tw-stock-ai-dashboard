@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + HTML 列印報告）
+台股 AI 個股分析儀表板（旗艦全景版 + 即時報價 + HTML 列印報告 + 9:16 侘寂風報告）
 """
 import streamlit as st
 import streamlit.components.v1 as components
@@ -481,7 +481,7 @@ def render_pct_card(label, pct, suffix="%"):
 
 
 # ============================================
-# 🆕 HTML 列印報告產生器（支援 Plotly 圖表）
+# HTML 列印報告產生器
 # ============================================
 def md_to_html(text):
     if not text:
@@ -533,28 +533,23 @@ def md_to_html(text):
 
 
 def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
-    """產生完整 HTML 報告，包含 Plotly 圖表"""
     name = r["name"]
     sid = r["id"]
     industry = r["industry"]
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 將圖表轉換為 HTML Snippet
     kline_html_str = fig_kline.to_html(full_html=False, include_plotlyjs='cdn') if fig_kline else ""
     inst_html_str = fig_inst.to_html(full_html=False, include_plotlyjs='cdn') if fig_inst else "<p class='hint'>無法人籌碼資料</p>"
 
-    # 漲跌色
     chg_color = "#C76A6A" if r["chg"] >= 0 else "#7B9E89"
     chg_arrow = "▲" if r["chg"] >= 0 else "▼"
 
-    # 警示燈
     alerts_html = ""
     for a in r["alerts"]["red"]: alerts_html += f'<span class="chip chip-red">🔴 {a}</span>'
     for a in r["alerts"]["yellow"]: alerts_html += f'<span class="chip chip-yellow">🟡 {a}</span>'
     for a in r["alerts"]["green"]: alerts_html += f'<span class="chip chip-green">🟢 {a}</span>'
     if not alerts_html: alerts_html = '<span class="chip">⚪ 目前無特殊警示</span>'
 
-    # 法人 4 格
     def fmt_inst(label, v):
         cls = "v-up" if v > 0 else "v-down" if v < 0 else "v-flat"
         sign = "+" if v > 0 else ""
@@ -562,17 +557,18 @@ def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
 
     inst_html = fmt_inst("外資(張)", r["ifor"]) + fmt_inst("投信(張)", r["itru"]) + fmt_inst("自營商(張)", r["idal"]) + fmt_inst("合計(張)", r["itot"])
 
-    # 基本面
     if r["has_rev"]:
-        rev_html = f"""
-        <div class="grid-3">
-          <div class="cell"><div class="lbl">最新月營收</div><div class="val">{r['rev']:.2f} 億</div></div>
-          <div class="cell"><div class="lbl">YoY 年增率</div><div class="val {'v-up' if r['yoy']>0 else 'v-down'}">{r['yoy']:+.2f}%</div></div>
-          <div class="cell"><div class="lbl">MoM 月增率</div><div class="val {'v-up' if r['mom']>0 else 'v-down'}">{r['mom']:+.2f}%</div></div>
-        </div>
-        """
+        yoy_cls = "v-up" if r['yoy'] > 0 else "v-down"
+        mom_cls = "v-up" if r['mom'] > 0 else "v-down"
+        rev_block = (
+            '<div class="grid-3">'
+            f'<div class="cell"><div class="lbl">最新月營收</div><div class="val">{r["rev"]:.2f} 億</div></div>'
+            f'<div class="cell"><div class="lbl">YoY 年增率</div><div class="val {yoy_cls}">{r["yoy"]:+.2f}%</div></div>'
+            f'<div class="cell"><div class="lbl">MoM 月增率</div><div class="val {mom_cls}">{r["mom"]:+.2f}%</div></div>'
+            '</div>'
+        )
     else:
-        rev_html = '<p class="hint">📌 ETF / 興櫃，無月營收資料</p>'
+        rev_block = '<p class="hint">📌 ETF / 興櫃，無月營收資料</p>'
 
     conclusion = generate_overall_conclusion(r)
     ai_html = md_to_html(ai_text) if ai_text else "<p class='hint'>（未產生 AI 解析）</p>"
@@ -585,130 +581,53 @@ def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
 <title>{name}（{sid}）AI 分析報告 - {now}</title>
 <style>
   * {{ box-sizing: border-box; }}
-  body {{
-    font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;
-    background: #F5F1EB;
-    color: #4A4540;
-    margin: 0;
-    padding: 30px 40px;
-    line-height: 1.7;
-    max-width: 900px;
-    margin: 0 auto;
-  }}
-
-  .toolbar {{
-    background: #FAF6F0;
-    border: 1px solid #D4CABB;
-    border-radius: 10px;
-    padding: 12px 16px;
-    margin-bottom: 24px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }}
+  body {{ font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif; background: #F5F1EB; color: #4A4540; margin: 0; padding: 30px 40px; line-height: 1.7; max-width: 900px; margin: 0 auto; }}
+  .toolbar {{ background: #FAF6F0; border: 1px solid #D4CABB; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }}
   .toolbar-tip {{ color: #8B7E72; font-size: 13px; }}
-  .btn {{
-    background: #8B9D83;
-    color: #fff;
-    border: none;
-    padding: 8px 18px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    font-family: inherit;
-  }}
+  .btn {{ background: #8B9D83; color: #fff; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }}
   .btn:hover {{ background: #6F8169; }}
-
   .header {{ border-bottom: 3px solid #C9B689; padding-bottom: 14px; margin-bottom: 22px; }}
   .header h1 {{ color: #5C5048; margin: 0; font-size: 26px; }}
   .header .meta {{ color: #8B7E72; font-size: 13px; margin-top: 6px; }}
-
   h2 {{ color: #8B6F47; border-left: 4px solid #C9B689; padding-left: 12px; margin-top: 28px; margin-bottom: 12px; font-size: 18px; }}
   h3 {{ color: #5C5048; font-size: 15px; margin-top: 18px; margin-bottom: 8px; }}
-  p {{ margin: 6px 0; }}
-  ul {{ margin: 6px 0 12px 0; padding-left: 22px; }}
-  li {{ margin: 3px 0; }}
-  strong {{ color: #C76A6A; }}
-
+  p {{ margin: 6px 0; }} ul {{ margin: 6px 0 12px 0; padding-left: 22px; }} li {{ margin: 3px 0; }} strong {{ color: #C76A6A; }}
   .price-row {{ background: linear-gradient(135deg, #FAF6F0, #F5EFE5); border: 1px solid #D4CABB; border-radius: 10px; padding: 16px 22px; margin-bottom: 18px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }}
   .price-num {{ font-size: 32px; font-weight: 700; color: #3D3833; }}
   .price-chg {{ font-size: 18px; font-weight: 700; color: {chg_color}; }}
   .price-meta {{ color: #8B7E72; font-size: 13px; }}
-
   .grid-4 {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }}
   .grid-3 {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
   .grid-2 {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }}
   .cell {{ background: #FAF6F0; border: 1px solid #E5DDD0; border-radius: 8px; padding: 12px; text-align: left; }}
-  .lbl {{ color: #8B7E72; font-size: 12px; margin-bottom: 6px; }}
-  .val {{ font-size: 22px; font-weight: 700; color: #3D3833; }}
-  .v-up {{ color: #C76A6A; }}
-  .v-down {{ color: #7B9E89; }}
-  .v-flat {{ color: #8B7E72; }}
-
+  .lbl {{ color: #8B7E72; font-size: 12px; margin-bottom: 6px; }} .val {{ font-size: 22px; font-weight: 700; color: #3D3833; }}
+  .v-up {{ color: #C76A6A; }} .v-down {{ color: #7B9E89; }} .v-flat {{ color: #8B7E72; }}
   .chip {{ display: inline-block; padding: 5px 12px; border-radius: 14px; margin: 3px 4px 3px 0; font-size: 13px; background: #F0EDE7; color: #5C5048; border: 1px solid #D4CABB; }}
   .chip-red {{ background: #FBEDED; color: #C76A6A; border-color: #E5BFBF; }}
   .chip-yellow {{ background: #FAF1D8; color: #B89243; border-color: #E5D9A8; }}
   .chip-green {{ background: #EAF1EC; color: #5C8169; border-color: #B8D0BE; }}
-
   .conclusion {{ background: linear-gradient(135deg, #F0E9DA, #E8DFCC); border: 2px solid #C9B689; border-radius: 10px; padding: 16px 20px; margin: 18px 0; }}
   .conclusion-label {{ background: #8B6F47; color: #fff; padding: 4px 10px; border-radius: 5px; font-size: 13px; font-weight: 700; display: inline-block; margin-bottom: 8px; }}
   .conclusion-text {{ font-size: 15px; color: #5C5048; font-weight: 500; }}
-  
   .chart-container {{ background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #D4CABB; margin-bottom: 20px; width: 100%; overflow: hidden; }}
-
   .hint {{ color: #8B7E72; font-style: italic; font-size: 13px; }}
-
   .footer {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid #D4CABB; color: #8B7E72; font-size: 12px; text-align: center; }}
-
-  /* === 列印專用樣式 === */
-  @media print {{
-    body {{ background: #fff; padding: 12mm; max-width: 100%; }}
-    .toolbar, .no-print {{ display: none !important; }}
-    h2 {{ page-break-after: avoid; }}
-    .conclusion, .price-row, .grid-3, .grid-4, .chart-container {{ page-break-inside: avoid; }}
-  }}
+  @media print {{ body {{ background: #fff; padding: 12mm; max-width: 100%; }} .toolbar, .no-print {{ display: none !important; }} h2 {{ page-break-after: avoid; }} .conclusion, .price-row, .grid-3, .grid-4, .chart-container {{ page-break-inside: avoid; }} }}
 </style>
 </head>
 <body>
-
   <div class="toolbar no-print">
-    <div class="toolbar-tip">💡 按下右側「列印 / 存 PDF」按鈕，或鍵盤 Ctrl + P（Mac: Cmd + P）即可儲存為 PDF</div>
+    <div class="toolbar-tip">💡 按下右側「列印 / 存 PDF」按鈕，或鍵盤 Ctrl + P 即可儲存為 PDF</div>
     <button class="btn" onclick="window.print()">🖨️ 列印 / 存 PDF</button>
   </div>
-
-  <div class="header">
-    <h1>📊 {name}（{sid}）AI 分析報告</h1>
-    <div class="meta">產業：{industry} ｜ 報告生成：{now} ｜ 整體狀態：{r['status']}</div>
-  </div>
-
+  <div class="header"><h1>📊 {name}（{sid}）AI 分析報告</h1><div class="meta">產業：{industry} ｜ 報告生成：{now} ｜ 整體狀態：{r['status']}</div></div>
   <div class="price-row">
-    <div>
-      <div class="lbl">即時收盤價</div>
-      <span class="price-num">{r['close']:.2f}</span>
-      <span class="price-chg">{chg_arrow} {r['chg']:+.2f}%</span>
-    </div>
-    <div>
-      <div class="lbl">成交量</div>
-      <span class="price-num" style="font-size:24px;">{r['vol']:,}</span>
-      <span class="price-meta">張</span>
-    </div>
-    <div>
-      <div class="lbl">偏多分數</div>
-      <span class="price-num" style="font-size:24px;color:#B89243;">{r['score']} / 100</span>
-    </div>
+    <div><div class="lbl">即時收盤價</div><span class="price-num">{r['close']:.2f}</span><span class="price-chg">{chg_arrow} {r['chg']:+.2f}%</span></div>
+    <div><div class="lbl">成交量</div><span class="price-num" style="font-size:24px;">{r['vol']:,}</span><span class="price-meta">張</span></div>
+    <div><div class="lbl">偏多分數</div><span class="price-num" style="font-size:24px;color:#B89243;">{r['score']} / 100</span></div>
   </div>
-
-  <h2>🚦 警示燈號</h2>
-  <div>{alerts_html}</div>
-  
-  <h2>📈 趨勢圖表 (日 K 線)</h2>
-  <div class="chart-container">
-    {kline_html_str}
-  </div>
-
+  <h2>🚦 警示燈號</h2><div>{alerts_html}</div>
+  <h2>📈 趨勢圖表 (日 K 線)</h2><div class="chart-container">{kline_html_str}</div>
   <h2>📈 技術面總覽</h2>
   <div class="grid-4">
     <div class="cell"><div class="lbl">趨勢方向</div><div class="val v-{('up' if r['trend']=='多頭' else 'down' if r['trend']=='空頭' else 'flat')}">{r['trend']}</div></div>
@@ -721,42 +640,225 @@ def build_html_report(r, ai_text, news_text, fig_kline=None, fig_inst=None):
     <div class="cell"><div class="lbl">MA20</div><div class="val">{f"{r['ma20']:.2f}" if r['ma20'] else 'N/A'}</div></div>
     <div class="cell"><div class="lbl">MA60</div><div class="val">{f"{r['ma60']:.2f}" if r['ma60'] else 'N/A'}</div></div>
   </div>
-
-  <h2>👥 籌碼面動向</h2>
-  <div class="grid-4">{inst_html}</div>
-  <div class="chart-container" style="margin-top:8px;">
-    {inst_html_str}
-  </div>
-
-  <h2>📊 基本面</h2>
-  {rev_html}
-
+  <h2>👥 籌碼面動向</h2><div class="grid-4">{inst_html}</div><div class="chart-container" style="margin-top:8px;">{inst_html_str}</div>
+  <h2>📊 基本面</h2>{rev_block}
   <h2>🎯 關鍵價位</h2>
   <div class="grid-2">
     <div class="cell"><div class="lbl">壓力區</div><div class="val v-up">{r['resist_lo']:.2f} ~ {r['resist_hi']:.2f}</div></div>
     <div class="cell"><div class="lbl">支撐區</div><div class="val v-down">{r['support_lo']:.2f} ~ {r['support_hi']:.2f}</div></div>
   </div>
-
-  <div class="conclusion">
-    <div class="conclusion-label">⭐ 整體結論</div>
-    <div class="conclusion-text">{conclusion}</div>
-  </div>
-
-  <h2>🤖 AI 智能解析</h2>
-  {ai_html}
-
-  <h2>📰 近期重要新聞</h2>
-  {news_html}
-
-  <div class="footer">
-    📊 資料來源：FinMind ｜ 🤖 AI：Google Gemini 2.5 Flash<br>
-    ⚠️ 本報告僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。
-  </div>
-
+  <div class="conclusion"><div class="conclusion-label">⭐ 整體結論</div><div class="conclusion-text">{conclusion}</div></div>
+  <h2>🤖 AI 智能解析</h2>{ai_html}
+  <h2>📰 近期重要新聞</h2>{news_html}
+  <div class="footer">📊 資料來源：FinMind ｜ 🤖 AI：Google Gemini 2.5 Flash<br>⚠️ 本報告僅供研究參考，不構成投資建議。投資有風險，操作請審慎評估。</div>
 </body>
 </html>"""
     return html
 
+# ============================================
+# 🌸 9:16 侘寂風 (Wabi-Sabi) 插圖報告產生器
+# ============================================
+def to_zh_num(num_str):
+    mapping = {'0':'零','1':'一','2':'二','3':'三','4':'四','5':'五','6':'六','7':'七','8':'八','9':'九'}
+    return "".join(mapping.get(c, c) for c in str(num_str))
+
+def build_wabisabi_report(r, ai_text):
+    """產生 9:16 的極簡侘寂風報告"""
+    now_zh = f"二〇二六年{to_zh_num(datetime.now().month)}月{to_zh_num(datetime.now().day)}日"
+    sid_zh = to_zh_num(r["id"])
+    
+    # 極簡折線圖 (SVG 產生)
+    df_30 = r["df"].tail(30)
+    prices = df_30["close"].tolist()
+    if len(prices) > 1:
+        min_p, max_p = min(prices), max(prices)
+        svg_pts = []
+        width, height = 300, 80
+        for i, p in enumerate(prices):
+            x = i * (width / (len(prices)-1))
+            # 反轉 Y 軸 (SVG 座標從左上角開始)
+            y = height - ((p - min_p) / (max_p - min_p + 1e-5)) * height
+            svg_pts.append(f"{x},{y}")
+        polyline = " ".join(svg_pts)
+        sparkline_svg = f'<svg viewBox="-10 -10 320 100" style="width:100%; height:auto;" stroke="#1C1C1C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><polyline points="{polyline}"/></svg>'
+    else:
+        sparkline_svg = ""
+
+    # 擷取第一句 AI 結論
+    ai_lines = [line.replace('##', '').replace('*', '').strip() for line in ai_text.split('\n') if line.strip() and not line.startswith('#')]
+    ai_short = ai_lines[1] if len(ai_lines) > 1 else generate_overall_conclusion(r)
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>侘寂觀測 - {r['name']}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600&display=swap');
+  
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; padding: 0;
+    background: #555; /* 預覽用外框底色 */
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+  }}
+  
+  .wabi-container {{
+    position: relative;
+    width: 100vw;
+    max-width: 450px; /* 限制寬度 */
+    aspect-ratio: 9/16;
+    background: #F7F5F0; /* 宣紙白 */
+    color: #1C1C1C; /* 水墨黑 */
+    font-family: 'Noto Serif TC', "PMingLiU", serif;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    padding: 40px;
+  }}
+
+  /* 仿圓相 (Enso) 水墨痕跡 */
+  .enso-circle {{
+    position: absolute;
+    top: 15%; right: -10%;
+    width: 250px; height: 250px;
+    border-radius: 50%;
+    border: 3px solid rgba(28, 28, 28, 0.08);
+    pointer-events: none;
+  }}
+  
+  /* 硃砂印章 */
+  .seal {{
+    position: absolute;
+    top: 40px; left: 40px;
+    width: 32px; height: 32px;
+    background: #C13228;
+    color: #F7F5F0;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex; justify-content: center; align-items: center;
+    border-radius: 4px;
+    letter-spacing: 2px;
+    writing-mode: vertical-rl;
+  }}
+
+  /* 右側主標題 (直書) */
+  .header-vertical {{
+    position: absolute;
+    top: 40px; right: 40px;
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    height: calc(100% - 80px);
+  }}
+  .header-vertical h1 {{
+    margin: 0;
+    font-size: 38px;
+    font-weight: 400;
+    letter-spacing: 8px;
+  }}
+  .header-vertical .sid {{
+    margin-right: 16px;
+    font-size: 16px;
+    color: #5A5A5A;
+    letter-spacing: 4px;
+    margin-top: 10px;
+  }}
+
+  /* 數據區塊 */
+  .metrics-area {{
+    position: absolute;
+    top: 25%; left: 40px;
+    width: calc(100% - 140px);
+  }}
+  .metric-box {{ margin-bottom: 24px; border-left: 1px solid rgba(28,28,28,0.2); padding-left: 16px; }}
+  .metric-lbl {{ font-size: 12px; color: #5A5A5A; letter-spacing: 2px; margin-bottom: 4px; }}
+  .metric-val {{ font-size: 32px; font-weight: 300; font-family: "Georgia", serif; letter-spacing: 1px; }}
+  
+  /* 折線圖 */
+  .chart-area {{
+    position: absolute;
+    top: 55%; left: 40px;
+    width: calc(100% - 130px);
+    opacity: 0.8;
+  }}
+
+  /* 底部總結 */
+  .footer-area {{
+    position: absolute;
+    bottom: 40px; left: 40px;
+    width: calc(100% - 110px);
+    border-top: 1px solid rgba(28,28,28,0.1);
+    padding-top: 16px;
+  }}
+  .footer-date {{ font-size: 12px; color: #888; margin-bottom: 12px; letter-spacing: 2px; }}
+  .footer-text {{
+    font-size: 14px;
+    line-height: 1.8;
+    color: #333;
+    text-align: justify;
+  }}
+
+  /* 列印模式設定 (確保產出 PDF 時為 9:16) */
+  @media print {{
+    body {{ background: #F7F5F0; margin: 0; display: block; }}
+    @page {{ size: 90mm 160mm; margin: 0; }} /* 約為 9:16 比例 */
+    .wabi-container {{ width: 100%; height: 100vh; max-width: none; box-shadow: none; padding: 10mm; }}
+    .seal {{ top: 10mm; left: 10mm; }}
+    .header-vertical {{ top: 10mm; right: 10mm; height: calc(100% - 20mm); }}
+    .metrics-area {{ left: 10mm; width: calc(100% - 40mm); }}
+    .chart-area {{ left: 10mm; width: calc(100% - 35mm); }}
+    .footer-area {{ bottom: 10mm; left: 10mm; width: calc(100% - 35mm); }}
+    .no-print {{ display: none !important; }}
+  }}
+</style>
+</head>
+<body>
+  <div class="no-print" style="position:fixed; top:20px; text-align:center; width:100%; z-index:100;">
+      <p style="color:#fff; font-family:sans-serif; font-size:14px; background:rgba(0,0,0,0.5); display:inline-block; padding:8px 16px; border-radius:20px;">💡 按下 Ctrl+P 儲存為 PDF，尺寸已設定為 9:16</p>
+  </div>
+
+  <div class="wabi-container">
+    <div class="enso-circle"></div>
+    <div class="seal">觀測</div>
+    
+    <div class="header-vertical">
+      <h1>{r['name']}</h1>
+      <div class="sid">代號 {sid_zh}</div>
+      <div class="sid" style="margin-right:8px; font-size:12px;">趨勢・{r['trend']}</div>
+    </div>
+
+    <div class="metrics-area">
+      <div class="metric-box">
+        <div class="metric-lbl">終值 (收盤)</div>
+        <div class="metric-val">{r['close']:.2f}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-lbl">狀態</div>
+        <div class="metric-val" style="font-size:18px; margin-top:8px;">{r['status'].split(' ')[1] if len(r['status'].split(' '))>1 else r['status']}</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-lbl">法人動向</div>
+        <div class="metric-val" style="font-size:18px; margin-top:8px;">{r['itot']:+,} 張</div>
+      </div>
+    </div>
+
+    <div class="chart-area">
+      <div class="metric-lbl" style="margin-bottom:12px;">三十日殘影</div>
+      {sparkline_svg}
+    </div>
+
+    <div class="footer-area">
+      <div class="footer-date">{now_zh}</div>
+      <div class="footer-text">{ai_short}</div>
+    </div>
+  </div>
+  <script>
+    // 自動觸發列印 (可選，這裡為了讓使用者看預覽先不開)
+    // window.onload = function() { window.print(); }
+  </script>
+</body>
+</html>"""
+    return html
 
 # ============================================
 # 主畫面 UI
@@ -787,10 +889,10 @@ if err or not r:
 conclusion_color = "#C76A6A" if r['score'] >= 60 else "#7B9E89" if r['score'] <= 40 else "#5C5048"
 
 # ============================================
-# 📤 導出與分享（HTML 列印版）
+# 📤 導出與分享
 # ============================================
 st.markdown("### 📤 導出與分享")
-c_exp1, c_exp2, c_exp3 = st.columns([1, 1, 2])
+c_exp1, c_exp2, c_exp3, c_exp4 = st.columns([1, 1, 1, 1])
 
 with c_exp1:
     if st.button("📝 產生完整 AI 報告", use_container_width=True, key="btn_gen_report"):
@@ -799,42 +901,58 @@ with c_exp1:
             ai_text = get_ai_analysis(r["name"], r["id"], summary)
             news_text = get_news(r["name"], r["id"])
             
-            # 產生要匯出的圖表
             fig_kline_export = plot_kline(r["df"], r["name"], r["id"], height=550)
             fig_inst_export = plot_inst(r["pivot"], r["df"]) if not r["pivot"].empty else None
 
-            # 組合進 HTML
+            # 產生標準版 HTML
             html_report = build_html_report(r, ai_text, news_text, fig_kline=fig_kline_export, fig_inst=fig_inst_export)
             st.session_state[f'html_report_{sid}'] = html_report
+            
+            # 產生侘寂風版 HTML
+            wabi_report = build_wabisabi_report(r, ai_text)
+            st.session_state[f'wabi_report_{sid}'] = wabi_report
             st.success("✅ 報告產生完畢！")
 
-    if f'html_report_{sid}' in st.session_state:
-        # 修正重點 2：動態取得當天日期並組合下載檔名
+with c_exp2:
+    if f'wabi_report_{sid}' in st.session_state:
         today_str = datetime.now().strftime("%Y%m%d")
         st.download_button(
-            label="⬇️ 下載 HTML 報告",
+            label="🌸 下載侘寂風報告(9:16)",
+            data=st.session_state[f'wabi_report_{sid}'].encode("utf-8"),
+            file_name=f"{r['name']}({sid})_侘寂觀測_{today_str}.html",
+            mime="text/html",
+            use_container_width=True
+        )
+    elif f'html_report_{sid}' in st.session_state:
+        # 如果只產生了舊報告沒產生新報告，避免按鈕跑版
+        st.markdown("")
+
+with c_exp3:
+    if f'html_report_{sid}' in st.session_state:
+        today_str = datetime.now().strftime("%Y%m%d")
+        st.download_button(
+            label="⬇️ 下載完整報告",
             data=st.session_state[f'html_report_{sid}'].encode("utf-8"),
             file_name=f"{r['name']}({sid})_完整AI解析_{today_str}.html",
             mime="text/html",
-            use_container_width=True,
-            help="下載後雙擊開啟，按 Ctrl+P 即可存成 PDF"
+            use_container_width=True
         )
 
-with c_exp2:
+with c_exp4:
     share_text = f"【台股AI分析】{r['name']} ({r['id']})\n股價：{r['close']:.2f} ({r['chg']:+.2f}%)\n趨勢：{r['trend']}\n分數：{r['score']}\n結論：{generate_overall_conclusion(r)}"
     import urllib.parse
     encoded = urllib.parse.quote(share_text)
     st.link_button("💬 分享至 LINE", f"https://line.me/R/msg/text/?{encoded}", use_container_width=True)
 
-with c_exp3:
-    if st.button("📋 產生純文字摘要", use_container_width=True):
-        st.code(share_text, language="text")
-
-# 如果產生過報告，把報告直接顯示在下方（可預覽 + 列印）
+# 預覽區塊
 if f'html_report_{sid}' in st.session_state:
-    with st.expander("👁️ 預覽完整報告（可列印 / 存 PDF）", expanded=True):
-        st.markdown("💡 **使用方式**：把報告下載後在瀏覽器開啟 → 按 **Ctrl+P** 即可另存為 PDF（手機選「列印 → 另存 PDF」）")
-        components.html(st.session_state[f'html_report_{sid}'], height=800, scrolling=True)
+    with st.expander("👁️ 預覽：完整 AI 報告（橫向）", expanded=False):
+        st.markdown("💡 下載後開啟 HTML，按 **Ctrl+P** 即可另存 PDF。")
+        components.html(st.session_state[f'html_report_{sid}'], height=600, scrolling=True)
+if f'wabi_report_{sid}' in st.session_state:
+    with st.expander("🌸 預覽：侘寂風報告（9:16）", expanded=True):
+        st.markdown("💡 宣紙白底、明體直書、極簡水墨折線。下載後開啟按 **Ctrl+P** 即可另存 9:16 比例 PDF。")
+        components.html(st.session_state[f'wabi_report_{sid}'], height=700, scrolling=True)
 
 st.divider()
 
@@ -881,7 +999,6 @@ with mode_tab1:
             with st.spinner("搜尋中..."): st.markdown(get_news(r["name"], r["id"]))
 
 with mode_tab2:
-    # ─── 頂部 Header ───
     st.markdown(f"""
     <div class="overview-header">
         <div class="overview-title">{r['name']} {r['id']} ｜ 7 大重點速覽</div>
@@ -901,7 +1018,6 @@ with mode_tab2:
 
     row1c1, row1c2, row1c3 = st.columns(3)
 
-    # 區塊 1：股價表現
     with row1c1:
         high30_pct = ((r['close'] / r['high_30'] - 1) * 100) if r['high_30'] else 0
         if "🔴" in r['status']: st_text = "高檔回落整理"
@@ -925,7 +1041,6 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 區塊 2：趨勢與均線
     with row1c2:
         ma5 = f"{r['ma5']:.2f}" if r['ma5'] else "N/A"
         ma20 = f"{r['ma20']:.2f}" if r['ma20'] else "N/A"
@@ -954,7 +1069,6 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 區塊 3：技術指標
     with row1c3:
         rsi_disp = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
         k_disp = f"{r['k']:.1f}" if r['k'] else "N/A"
@@ -985,7 +1099,6 @@ with mode_tab2:
 
     row2c1, row2c2, row2c3 = st.columns(3)
 
-    # 區塊 4：量能與型態
     with row2c1:
         if r['vol_status'] == "放大":
             vol_text = f"量能放大（量比 {r['vr']:.2f}x）"
@@ -1015,7 +1128,6 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 區塊 5：籌碼分析
     with row2c2:
         ifor_cls = "kv-value-up" if r['ifor'] > 0 else "kv-value-down" if r['ifor'] < 0 else "kv-value"
         itru_cls = "kv-value-up" if r['itru'] > 0 else "kv-value-down" if r['itru'] < 0 else "kv-value"
@@ -1041,16 +1153,11 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 區塊 6：關鍵價位與策略
     with row2c3:
-        if "🔴" in r['status']:
-            ops = ["短線追高風險高", "建議逢高分批減碼", "等待回測支撐再進場"]
-        elif r['trend'] == "多頭" and "🟢" in r['status']:
-            ops = ["技術面健康可佈局", "建議分批承接", "支撐區是加碼點"]
-        elif r['trend'] == "空頭":
-            ops = ["趨勢偏空建議觀望", "若反彈偏空操作", "破支撐應停損出場"]
-        else:
-            ops = ["盤整待方向", "區間操作為主", "突破再追進"]
+        if "🔴" in r['status']: ops = ["短線追高風險高", "建議逢高分批減碼", "等待回測支撐再進場"]
+        elif r['trend'] == "多頭" and "🟢" in r['status']: ops = ["技術面健康可佈局", "建議分批承接", "支撐區是加碼點"]
+        elif r['trend'] == "空頭": ops = ["趨勢偏空建議觀望", "若反彈偏空操作", "破支撐應停損出場"]
+        else: ops = ["盤整待方向", "區間操作為主", "突破再追進"]
         ops_html = "".join([f'<div style="color:#4A4540;font-size:13px;padding:3px 0 3px 16px;position:relative;line-height:1.6;"><span style="position:absolute;left:0;color:#B89243;font-size:9px;top:8px;">●</span>{op}</div>' for op in ops])
         st.markdown(f"""
         <div class="section-card">
@@ -1065,12 +1172,10 @@ with mode_tab2:
         </div>
         """, unsafe_allow_html=True)
 
-    # 整體結論
     st.markdown(f'<div class="conclusion-box"><div class="conclusion-title">⭐ 整體結論</div><div class="conclusion-text" style="color: {conclusion_color};">{generate_overall_conclusion(r)}</div></div>', unsafe_allow_html=True)
 
 
 with mode_tab3:
-    # ─── 頂部標題列 ───
     st.markdown(f"""
     <div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #E5DDD0; padding-bottom:8px; margin-bottom:12px;">
         <div>
@@ -1085,33 +1190,28 @@ with mode_tab3:
     </div>
     """, unsafe_allow_html=True)
 
-    # 上半部：左 K 線（60%） + 右資訊區（40%）
     top_left, top_right = st.columns([6, 4])
 
     with top_left:
         st.plotly_chart(plot_kline(r["df"], r["name"], r["id"], height=620), use_container_width=True, key="kline_tab3")
 
     with top_right:
-        # 區塊 1：技術分析總覽
         rsi_disp = f"{r['rsi']:.1f}" if r['rsi'] else "N/A"
         k_disp = f"{r['k']:.1f}" if r['k'] else "N/A"
         d_disp = f"{r['d']:.1f}" if r['d'] else "N/A"
         macd_disp = f"{r['macd']:.2f}" if r['macd'] else "N/A"
 
-        # MA 狀態
         if r['ma5'] and r['ma20'] and r['ma60']:
             if r['close'] > r['ma5'] > r['ma20'] > r['ma60']: ma_state = "均線多頭"
             elif r['close'] < r['ma5'] < r['ma20'] < r['ma60']: ma_state = "均線空頭"
             else: ma_state = "均線糾結"
         else: ma_state = "N/A"
 
-        # KD 狀態
         if r['k'] and r['d']:
             if r['k'] > r['d']: kd_state = "黃金交叉" if r['k'] < 60 else "偏多走勢"
             else: kd_state = "死亡交叉" if r['k'] > 40 else "偏空走勢"
         else: kd_state = "N/A"
 
-        # 量價關係
         if r['chg'] > 0 and r['vol_status'] == "放大": pv_state = "價漲量增"
         elif r['chg'] > 0 and r['vol_status'] == "量縮": pv_state = "價漲量縮"
         elif r['chg'] < 0 and r['vol_status'] == "放大": pv_state = "價跌量增"
@@ -1137,7 +1237,6 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-        # 修正重點 1：將多行字串改為單行拼接，消除前方縮排引起的 Markdown 渲染錯誤
         if r['has_rev']:
             yoy_cls = "kv-value-up" if r['yoy'] > 0 else "kv-value-down"
             rev_block = (
@@ -1159,7 +1258,6 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-        # 區塊 3：布林通道
         bb_ub_disp = f"{r['bb_ub']:.2f}" if r['bb_ub'] else "N/A"
         bb_mid_disp = f"{r['bb_mid']:.2f}" if r['bb_mid'] else "N/A"
         bb_lb_disp = f"{r['bb_lb']:.2f}" if r['bb_lb'] else "N/A"
@@ -1174,26 +1272,15 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-    # 下半部：3 個區塊 -- 短線風險 / 偏多分數 / 關鍵價位
     bot_c1, bot_c2, bot_c3 = st.columns(3)
 
     with bot_c1:
-        # 短線風險燈號
-        if "🔴" in r['status']:
-            risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🔴</div><div style="color:#C76A6A;font-weight:700;margin-top:8px;">高風險</div></div>'
-        elif "🟡" in r['status']:
-            risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🟡</div><div style="color:#B89243;font-weight:700;margin-top:8px;">需觀察</div></div>'
-        elif "🟢" in r['status']:
-            risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🟢</div><div style="color:#7B9E89;font-weight:700;margin-top:8px;">低風險</div></div>'
-        else:
-            risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">⚪</div><div style="color:#8B7E72;font-weight:700;margin-top:8px;">中性</div></div>'
+        if "🔴" in r['status']: risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🔴</div><div style="color:#C76A6A;font-weight:700;margin-top:8px;">高風險</div></div>'
+        elif "🟡" in r['status']: risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🟡</div><div style="color:#B89243;font-weight:700;margin-top:8px;">需觀察</div></div>'
+        elif "🟢" in r['status']: risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">🟢</div><div style="color:#7B9E89;font-weight:700;margin-top:8px;">低風險</div></div>'
+        else: risk_html = '<div style="text-align:center;padding:18px 0;"><div style="font-size:48px;">⚪</div><div style="color:#8B7E72;font-weight:700;margin-top:8px;">中性</div></div>'
 
-        st.markdown(f"""
-        <div class="section-card">
-            <div class="section-title">🚦 短線風險</div>
-            {risk_html}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card"><div class="section-title">🚦 短線風險</div>{risk_html}</div>', unsafe_allow_html=True)
 
     with bot_c2:
         st.markdown('<div class="section-card" style="padding:8px;"><div class="section-title">🎯 偏多分數</div>', unsafe_allow_html=True)
@@ -1211,7 +1298,6 @@ with mode_tab3:
         </div>
         """, unsafe_allow_html=True)
 
-    # 整體結論
     st.markdown(f'<div class="conclusion-box"><div class="conclusion-title">⭐ 整體結論</div><div class="conclusion-text" style="color: {conclusion_color};">{generate_overall_conclusion(r)}</div></div>', unsafe_allow_html=True)
 
 st.divider()
